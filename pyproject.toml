@@ -1,0 +1,54 @@
+# Tool settings
+# -------------
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+filterwarnings = [
+    "ignore:Converting non-nanosecond:UserWarning:cdflib",
+    "ignore:datetime.datetime.utcfromtimestamp:DeprecationWarning:cdflib",
+    # Ignore Data_version warnings during tests because we default to v001
+    "ignore:No Data_version attribute found:UserWarning:imap_processing",
+    # Some test packet data is of the incorrect length and causes many warnings
+    # that can be ignored for testing purposes
+    "ignore:Number of bits:UserWarning:space_packet_parser",
+]
+markers = [
+    "external_kernel: marks tests as requiring external SPICE kernels (deselect with '-m \"not external_kernel\"')",
+    "external_test_data: marks tests as requiring external test data (deselect with '-m \"not external_test_data\"')",
+    "use_test_metakernel: Mark test to use a test metakernel"
+]
+
+[tool.ruff]
+target-version = "py310"
+lint.select = ["B", "D", "E", "F", "I", "N", "S", "W", "PL", "PT", "UP", "RUF"]
+lint.ignore = [
+  "D104",  # Missing docstring in public package
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.codespell]
+ignore-words-list = "livetime,nd"
+
+[tool.numpydoc_validation]
+checks = ["all", #report on all checks, except the following
+    "EX01", # Ignore No examples section found
+    "SA01", # Ignore See Also section not found
+    "ES01", # Ignore No extended summary found
+    "RT02" ] # Ignore The first line of the Returns section
+exclude = ['__init__', '_version'] # don't report on objects that match any of these regex
+override_SS05 = [  # override SS05 to allow docstrings starting with these words
+    '^Process ',
+]
+
+[tool.mypy]
+disable_error_code = ['import-not-found', # Unable to locate module or package specified
+                'import-untyped', # The import lacks type information
+                'no-untyped-call', # Function calls are only made to functions that are fully typed
+                'type-arg', # Requires type arguments to be specified in list[] and dict[]
+                'union-attr', # Item "float" of "float | Any" has no attribute "reshape"
+                'no-any-return', # Returning Any from a function
+              ]
+strict = true
+explicit_package_bases = true
