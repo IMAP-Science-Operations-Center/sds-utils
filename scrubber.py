@@ -5,7 +5,6 @@
 import collections
 import csv
 import datetime
-import functools
 import os.path
 import typing
 
@@ -60,13 +59,10 @@ def break_by_logical_source(
     def source(x: dict[str, typing.Any]) -> tuple[str, str, str]:
         return (x["instrument"], x["data_level"], x["descriptor"])
 
-    return functools.reduce(
-        lambda by_source, this_file: (
-            by_source[source(this_file)].append(this_file) or by_source  # type: ignore[func-returns-value]
-        ),
-        fileinfo,
-        collections.defaultdict(list),
-    )
+    by_source = collections.defaultdict(list)
+    for this_file in fileinfo:
+        by_source[source(this_file)].append(this_file)
+    return by_source
 
 
 def missing_repoints(fileinfo: list[dict[str, typing.Any]]) -> list[int]:
