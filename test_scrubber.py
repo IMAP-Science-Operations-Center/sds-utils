@@ -84,7 +84,7 @@ class TestScrubber:
             )
         ]
         assert mock_query.call_args_list == expected
-        assert latest == []
+        assert latest == {"codice": [], "glows": []}
 
     def test_break_by_logical_source(self):
         inputs = [
