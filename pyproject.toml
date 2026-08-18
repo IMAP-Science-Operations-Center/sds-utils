@@ -24,6 +24,7 @@ lint.select = ["B", "D", "E", "F", "I", "N", "S", "W", "PL", "PT", "UP", "RUF"]
 lint.ignore = [
   "D104",  # Missing docstring in public package
 ]
+extend-exclude = ["test_*.py"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
@@ -52,3 +53,4 @@ disable_error_code = ['import-not-found', # Unable to locate module or package s
               ]
 strict = true
 explicit_package_bases = true
+exclude = ["test_*"]

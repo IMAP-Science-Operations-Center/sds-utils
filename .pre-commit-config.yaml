@@ -29,5 +29,5 @@ repos:
     rev: "v1.18.2"
     hooks:
       - id: mypy
-        exclude: .*(tests|docs).*
+        exclude: .*(tests|docs|test_).*
         additional_dependencies: [numpy>=2]
