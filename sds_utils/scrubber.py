@@ -46,7 +46,7 @@ def all_latest_files() -> dict[str, list[dict[str, typing.Any]]]:
             )
         ]
         for inst in imap_data_access.VALID_INSTRUMENTS
-        if inst not in ("ialirt", "spacecraft")
+        if inst not in ("ialirt", "spacecraft", "l1const")
     }
 
 
