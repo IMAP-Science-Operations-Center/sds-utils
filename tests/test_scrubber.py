@@ -5,7 +5,7 @@ import unittest.mock
 
 import pytest
 
-import scrubber
+import sds_utils.scrubber as scrubber
 
 
 class TestScrubber:
@@ -39,7 +39,7 @@ class TestScrubber:
             datetime.datetime = olddt
         assert output == expected
 
-    @unittest.mock.patch("scrubber.imap_data_access.query")
+    @unittest.mock.patch("sds_utils.scrubber.imap_data_access.query")
     @unittest.mock.patch.object(
         scrubber.imap_data_access, "VALID_INSTRUMENTS", ("codice", "glows")
     )
