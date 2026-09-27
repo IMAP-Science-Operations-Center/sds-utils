@@ -95,7 +95,7 @@ class DashboardTableRenderer:
         self.table = ui.table.from_pandas(
             table_df.reset_index(drop=True),
             pagination=25,
-        ).classes("w-full shadow-none border rounded-lg")
+        ).classes("dashboard-sticky-table w-full h-full shadow-none border rounded-lg")
         for column in status_columns:
             for row, value in zip(self.table.rows, table_df[column], strict=True):
                 row[column] = value

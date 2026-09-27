@@ -55,6 +55,19 @@ class FilteredTableView(FilteredTableViewBase):
 
     def render(self) -> None:
         """Create controls, summaries, and the initial table."""
+        ui.add_css(
+            """
+            .dashboard-sticky-table {
+                height: 100%;
+            }
+            .dashboard-sticky-table thead tr th {
+                position: sticky;
+                top: 0;
+                z-index: 2;
+                background: white;
+            }
+            """
+        )
         self.filters = FilterControls(
             self.table.filters,
             initial_arguments=self.settings.filtering,
@@ -69,7 +82,9 @@ class FilteredTableView(FilteredTableViewBase):
         self.standalone_filters_container = ui.row().classes(
             "w-full items-center gap-3 flex-wrap"
         )
-        self.table_container = ui.column().classes("w-full")
+        self.table_container = ui.column().classes(
+            "w-full flex-1 min-h-0 overflow-hidden"
+        )
         self.update_query(
             QuerySpec(
                 start_time=datetime.datetime(2026, 8, 1),

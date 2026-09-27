@@ -53,6 +53,9 @@ def login_page() -> None:
 @ui.page("/filteredtableview")
 def filtered_table_page(username: str = "") -> None:
     """Render the dashboard for an existing user profile."""
+    ui.query(".nicegui-content").classes(
+        "h-screen flex flex-col flex-nowrap overflow-hidden"
+    )
     with Session(engine) as session:
         profile = session.exec(
             select(UserProfile).where(UserProfile.username == username)
