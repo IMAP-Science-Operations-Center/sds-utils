@@ -136,12 +136,12 @@ class StatusFilterCard(UIElem):
         self.card.on("click", self._toggle)
         with self.card:
             ui.label(self.status).classes("text-xs uppercase tracking-wide")
-            self.count_label = ui.label("0 / 0").classes("text-2xl font-semibold")
+            self.count_label = ui.label("0").classes("text-2xl font-semibold")
 
-    def set_count(self, shown: int, total: int) -> None:
-        """Update the displayed shown and total counts."""
+    def set_count(self, shown: int) -> None:
+        """Update the displayed count."""
         shown_text = f"{shown:,}" if self.active else "-"
-        self.count_label.set_text(f"{shown_text} / {total:,}")
+        self.count_label.set_text(shown_text)
 
     def set_active(self, active: bool) -> None:
         """Synchronize the card's active appearance without invoking callbacks."""
@@ -203,20 +203,31 @@ class StatusSummary(UIElem):
 
     def update(
         self,
-        source_df: pd.DataFrame,
         shown_df: pd.DataFrame,
     ) -> None:
-        """Update counts and active state from source and displayed rows."""
-        self._update_statuses(source_df)
+        """Update counts and active state from displayed table data."""
+        counts = self._status_counts(shown_df)
 
-        total_counts = source_df["status"].value_counts()
-        shown_counts = shown_df["status"].value_counts()
         for status, card in self.cards.items():
             card.set_active(status in self.status_filter.selected)
-            card.set_count(
-                int(shown_counts.get(status, 0)),
-                int(total_counts.get(status, 0)),
-            )
+            card.set_count(counts.get(status, 0))
+
+    @staticmethod
+    def _status_counts(data_df: pd.DataFrame) -> dict[str, int]:
+        if "status" in data_df:
+            return {
+                str(status): int(count)
+                for status, count in data_df["status"].value_counts().items()
+            }
+
+        counts = StatusCounts()
+        for column in status_count_columns(data_df):
+            for value in data_df[column].dropna():
+                counts += value
+        return {
+            field.replace("_", "-"): count
+            for field, count in zip(StatusCounts._fields, counts, strict=True)
+        }
 
     def _update_statuses(self, source_df: pd.DataFrame) -> None:
         unknown = sorted(set(source_df["status"].dropna()) - set(STATUS_ORDER))

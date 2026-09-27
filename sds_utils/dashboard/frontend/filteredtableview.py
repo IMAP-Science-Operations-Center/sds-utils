@@ -92,7 +92,6 @@ class FilteredTableView(FilteredTableViewBase):
         """Apply current state and rebuild the table and summaries."""
         persistent_filters = self.filters.arguments()
         effective_filters = self.navigator.apply_temporary_filters(persistent_filters)
-        filtered_df = self.table.transform_data(effective_filters)
         data_df = self.table.transform_data(
             filter_kwargs=effective_filters,
             agg_spec=self.navigator.agg_spec,
@@ -122,7 +121,7 @@ class FilteredTableView(FilteredTableViewBase):
                 ),
             )
 
-        self.status_summary.update(self.full_data_df, filtered_df)
+        self.status_summary.update(data_df)
         self._sync_settings(
             DashboardSettings(
                 active_agg_preset=self.navigator.agg_spec.preset,
