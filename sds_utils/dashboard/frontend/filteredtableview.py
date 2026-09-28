@@ -74,15 +74,16 @@ class FilteredTableView(FilteredTableViewBase):
             initial_arguments=self.settings.filtering,
             on_change=self.update_table,
         )
-        self.projection = ProjectionControls(
-            self.settings.projection,
-            self.update_projection,
-        ).build()
-        self.navigator = PaneNavigator(
-            self.settings.active_agg_preset,
-            self.settings.agg_specs,
-            self.update_table,
-        ).build()
+        with ui.row().classes("w-full items-start gap-3 flex-wrap"):
+            self.projection = ProjectionControls(
+                self.settings.projection,
+                self.update_projection,
+            ).build()
+            self.navigator = PaneNavigator(
+                self.settings.active_agg_preset,
+                self.settings.agg_specs,
+                self.update_table,
+            ).build()
         self.status_summary = StatusSummary(self.filters.menus["status"]).build()
         self.standalone_filters_container = ui.row().classes(
             "w-full items-center gap-3 flex-wrap"
