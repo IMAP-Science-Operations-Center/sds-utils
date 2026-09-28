@@ -12,6 +12,10 @@ def test_dependency_yaml_output_names_match_dagster_asset_names(
     yaml_text = """
 (l2, summed-intensity):
   partition: repoint
+  inputs:
+    - source: hit
+      data_type: l0
+      descriptor: raw
   outputs:
     - source: hit
       data_type: l2
@@ -40,6 +44,14 @@ def test_dependency_yaml_output_names_match_dagster_asset_names(
         descriptor="summedintensity",
         partition_type="repoint",
         expected_assets=frozenset({("hit_l2_summedintensity",)}),
+    )
+    assert definitions["hit_l0_none"] == jobkey.CurrentJobDefinition(
+        job_key="hit_l0_none",
+        instrument="hit",
+        data_level="l0",
+        descriptor="none",
+        partition_type="repoint",
+        expected_assets=frozenset({("hit_l0_raw",)}),
     )
 
 

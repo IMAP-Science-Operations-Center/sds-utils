@@ -10,6 +10,7 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from sds_utils.dashboard.backend.data import QuerySpec
 from sds_utils.dashboard.backend.db.models import (
+    CachedAssetMaterialization,
     CachedDagsterRun,
     DagsterCacheNamespace,
     DerivedJobRun,
@@ -70,6 +71,61 @@ def test_unknown_dagster_status_is_unknown(
     assert status == "unknown"
     assert "Unknown Dagster run status 'FUTURE_STATUS'" in caplog.text
     assert "future-status-run" in caplog.text
+
+
+def test_query_builds_synthetic_l0_rows_from_asset_materializations() -> None:
+    db_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(db_engine)
+    timestamp = datetime.datetime(2026, 9, 12, 12, tzinfo=datetime.UTC)
+    with Session(db_engine) as session:
+        namespace = DagsterCacheNamespace(
+            name="default",
+            graphql_url="https://dagster.example/graphql",
+        )
+        session.add(namespace)
+        session.flush()
+        assert namespace.id is not None
+        session.add(
+            CachedAssetMaterialization(
+                namespace_id=namespace.id,
+                event_key="event-key",
+                asset_key="glows_l0_raw",
+                partition=(
+                    "repoint369_2026-09-12T10:03:12_to_2026-09-13T10:03:10"
+                ),
+                partition_prefix="repoint369",
+                partition_label="repoint",
+                repoint=369,
+                partition_start_time=datetime.datetime(
+                    2026, 9, 12, 10, 3, 12, tzinfo=datetime.UTC
+                ),
+                partition_end_time=datetime.datetime(
+                    2026, 9, 13, 10, 3, 10, tzinfo=datetime.UTC
+                ),
+                run_id="sensor-run",
+                timestamp=timestamp,
+            )
+        )
+        session.commit()
+
+    data_df = DBDataSource(db_engine, "default").query(
+        QuerySpec(
+            start_time=datetime.datetime(2026, 9, 12, tzinfo=datetime.UTC),
+            end_time=datetime.datetime(2026, 9, 13, tzinfo=datetime.UTC),
+        )
+    )
+
+    row = data_df.iloc[0]
+    assert row["job_key"] == "glows_l0_none"
+    assert row["status"] == "materialized"
+    assert row["n_expected"] == 1
+    assert row["n_materialized"] == 1
+    assert row["expected_assets"] == [["glows_l0_raw"]]
+    assert row["source_kind"] == "l0_asset_materialization"
 
 
 def test_query_builds_dashboard_dataframe_from_relevant_runs(

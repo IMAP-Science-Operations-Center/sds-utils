@@ -10,6 +10,7 @@ from sqlmodel import Session, col, select
 
 from .data import DataSourceBase, QuerySpec
 from .db.models import (
+    CachedAssetMaterialization,
     CachedDagsterRun,
     DagsterCacheNamespace,
     DerivedJobRun,
@@ -154,7 +155,7 @@ class DBDataSource(DataSourceBase):
         self.engine = engine
         self.namespace = dagster_namespace
 
-    def query(self, query: QuerySpec) -> pd.DataFrame:
+    def query(self, query: QuerySpec) -> pd.DataFrame:  # noqa: PLR0912, PLR0915
         """Return runs selected by update time or overlapping partition interval."""
         start_time = _utc_naive(query.start_time)
         end_time = _utc_naive(query.end_time)
@@ -274,6 +275,117 @@ class DBDataSource(DataSourceBase):
                     ),
                     "source_kind": "dagster_run",
                     "tags": run.tags,
+                    "start_date": None,
+                    "end_date": None,
+                }
+            )
+
+        materialization_statement = (
+            select(CachedAssetMaterialization)
+            .join(
+                DagsterCacheNamespace,
+                col(CachedAssetMaterialization.namespace_id)
+                == DagsterCacheNamespace.id,
+            )
+            .where(DagsterCacheNamespace.name == self.namespace)
+            .order_by(col(CachedAssetMaterialization.timestamp).desc())
+        )
+        if query.date_mode == "update_time":
+            materialization_statement = materialization_statement.where(
+                col(CachedAssetMaterialization.timestamp) >= start_time,
+                col(CachedAssetMaterialization.timestamp) <= end_time,
+            )
+        else:
+            materialization_statement = materialization_statement.where(
+                col(CachedAssetMaterialization.partition_start_time) <= end_time,
+                col(CachedAssetMaterialization.partition_end_time) >= start_time,
+            )
+        if query.version_mode == "latest":
+            ranked_materializations = (
+                select(
+                    CachedAssetMaterialization.id.label("materialization_id"),
+                    func.row_number()
+                    .over(
+                        partition_by=(
+                            col(CachedAssetMaterialization.asset_key),
+                            col(CachedAssetMaterialization.partition),
+                        ),
+                        order_by=col(CachedAssetMaterialization.timestamp).desc(),
+                    )
+                    .label("version_rank"),
+                )
+                .join(
+                    DagsterCacheNamespace,
+                    col(CachedAssetMaterialization.namespace_id)
+                    == DagsterCacheNamespace.id,
+                )
+                .where(DagsterCacheNamespace.name == self.namespace)
+            )
+            if query.date_mode == "update_time":
+                ranked_materializations = ranked_materializations.where(
+                    col(CachedAssetMaterialization.timestamp) >= start_time,
+                    col(CachedAssetMaterialization.timestamp) <= end_time,
+                )
+            else:
+                ranked_materializations = ranked_materializations.where(
+                    col(CachedAssetMaterialization.partition_start_time) <= end_time,
+                    col(CachedAssetMaterialization.partition_end_time) >= start_time,
+                )
+            ranked_subquery = ranked_materializations.subquery()
+            latest_ids = select(ranked_subquery.c.materialization_id).where(
+                ranked_subquery.c.version_rank == 1
+            )
+            materialization_statement = materialization_statement.where(
+                col(CachedAssetMaterialization.id).in_(latest_ids)
+            )
+        with Session(self.engine) as session:
+            materializations = list(session.exec(materialization_statement))
+
+        for materialization in materializations:
+            suffix = "_l0_raw"
+            if not materialization.asset_key.endswith(suffix):
+                logger.warning(
+                    "Ignoring non-L0 materialization cached as L0: %s",
+                    materialization.asset_key,
+                )
+                continue
+            instrument = materialization.asset_key.removesuffix(suffix)
+            records.append(
+                {
+                    "run_id": materialization.run_id,
+                    "instrument": instrument,
+                    "data_level": "l0",
+                    "descriptor": "none",
+                    "job_key": f"{instrument}_l0_none",
+                    "job_name": None,
+                    "partition": materialization.partition,
+                    "partition_prefix": materialization.partition_prefix,
+                    "partition_label": materialization.partition_label,
+                    "repoint": materialization.repoint,
+                    "start_time": materialization.partition_start_time,
+                    "end_time": materialization.partition_end_time,
+                    "status": "materialized",
+                    "dagster_status": None,
+                    "n_expected": 1,
+                    "n_materialized": 1,
+                    "n_skipped": 0,
+                    "n_missing": 0,
+                    "skip_info": None,
+                    "skip_reason": None,
+                    "missing_files": None,
+                    "skipped_reason": None,
+                    "creation_time": materialization.timestamp,
+                    "update_time": materialization.timestamp,
+                    "run_start_time": None,
+                    "run_end_time": None,
+                    "duration_seconds": None,
+                    "parent_run_id": None,
+                    "root_run_id": None,
+                    "selected_assets": [],
+                    "planned_assets": [],
+                    "expected_assets": [[materialization.asset_key]],
+                    "source_kind": "l0_asset_materialization",
+                    "tags": {},
                     "start_date": None,
                     "end_date": None,
                 }

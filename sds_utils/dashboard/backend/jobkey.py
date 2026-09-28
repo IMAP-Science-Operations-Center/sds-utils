@@ -23,6 +23,7 @@ _JOB_NAME_PATTERN = re.compile(
 _YAML_JOB_PATTERN = re.compile(r"^\(([^,]+),\s*([^)]+)\)$")
 _INSTRUMENT_PATTERN = re.compile(r"^[a-z][a-z0-9-]*$")
 _ASSET_COMPONENT_COUNT = 3
+_L0_DESCRIPTOR = "raw"
 
 
 class JobKeyParts(NamedTuple):
@@ -52,6 +53,20 @@ def _asset_parts(path: list[str]) -> tuple[str, str] | None:
     if len(parts) != _ASSET_COMPONENT_COUNT or not all(parts):
         return None
     return parts[0], parts[1]
+
+
+def _contains_asset(value: object, expected: tuple[str, str, str]) -> bool:
+    """Return whether a nested dependency value contains an asset reference."""
+    if isinstance(value, dict):
+        identity = tuple(
+            value.get(field) for field in ("source", "data_type", "descriptor")
+        )
+        if identity == expected:
+            return True
+        return any(_contains_asset(child, expected) for child in value.values())
+    if isinstance(value, list):
+        return any(_contains_asset(child, expected) for child in value)
+    return False
 
 
 @lru_cache(maxsize=32)
@@ -115,6 +130,7 @@ def current_job_definitions(
     """Load normalized current job definitions for the requested instruments."""
     definitions: dict[str, CurrentJobDefinition] = {}
     for instrument in sorted(set(instruments)):
+        l0_partition_types: set[str] = set()
         for job_name, spec in _dependencies_for_instrument(instrument).items():
             match = _YAML_JOB_PATTERN.fullmatch(job_name)
             if match is None or not isinstance(spec, dict):
@@ -123,6 +139,11 @@ def current_job_definitions(
             outputs = spec.get("outputs")
             if not isinstance(partition_type, str) or not isinstance(outputs, list):
                 continue
+            if _contains_asset(
+                spec.get("inputs"),
+                (instrument, "l0", _L0_DESCRIPTOR),
+            ):
+                l0_partition_types.add(partition_type)
             expected_assets = frozenset(
                 (
                     (
@@ -154,6 +175,23 @@ def current_job_definitions(
             if existing is not None and existing != definition:
                 raise ValueError(f"Ambiguous current job definition: {job_key}")
             definitions[job_key] = definition
+        if len(l0_partition_types) > 1:
+            logger.warning(
+                "Current jobs disagree about the partition type for %s_l0_raw: %s",
+                instrument,
+                sorted(l0_partition_types),
+            )
+        elif l0_partition_types:
+            partition_type = l0_partition_types.pop()
+            job_key = f"{instrument}_l0_none"
+            definitions[job_key] = CurrentJobDefinition(
+                job_key=job_key,
+                instrument=instrument,
+                data_level="l0",
+                descriptor="none",
+                partition_type=partition_type,
+                expected_assets=frozenset({(f"{instrument}_l0_raw",)}),
+            )
     return definitions
 
 

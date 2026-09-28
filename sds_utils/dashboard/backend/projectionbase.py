@@ -1,5 +1,6 @@
 """Logical-row projections applied before dashboard filtering."""
 
+import re
 from collections.abc import Callable, Collection
 from enum import StrEnum, auto
 from typing import Any, NamedTuple
@@ -54,6 +55,8 @@ class _Classification(NamedTuple):
 
 DefinitionLoader = Callable[[Collection[str]], dict[str, CurrentJobDefinition]]
 
+_IDEX_PARTITION_LABEL = re.compile(r"^idex(?P<days>\d+)$")
+
 
 def _asset_set(value: object) -> frozenset[tuple[str, ...]]:
     if not isinstance(value, list):
@@ -63,6 +66,16 @@ def _asset_set(value: object) -> frozenset[tuple[str, ...]]:
         for path in value
         if isinstance(path, list) and all(isinstance(part, str) for part in path)
     )
+
+
+def _partition_type(partition_label: str) -> str:
+    """Translate concrete partition labels to dependency-YAML partition types."""
+    if partition_label.startswith("cadence-"):
+        return partition_label.removeprefix("cadence-")
+    match = _IDEX_PARTITION_LABEL.fullmatch(partition_label)
+    if match is not None:
+        return f"{match.group('days')}d"
+    return partition_label
 
 
 class Projector:
@@ -215,6 +228,7 @@ class Projector:
             partition = row.get("partition")
             if not isinstance(partition_type, str) or pd.isna(partition):
                 continue
+            partition_type = _partition_type(partition_type)
             identity = (partition_type, partition)
             if identity in seen:
                 continue

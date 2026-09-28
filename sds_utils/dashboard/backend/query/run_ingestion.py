@@ -26,6 +26,7 @@ from .graphql_api.runs_for_ingestion import (
     RunsForIngestionRunsOrErrorRuns,
     RunsForIngestionRunsOrErrorRunsResults,
 )
+from .l0_ingestion import ingest_l0_materializations
 
 DAGSTER_PARTITION_TAG = "dagster/partition"
 DEFAULT_PAGE_SIZE = 100
@@ -399,7 +400,7 @@ async def ingest_runs(  # noqa: PLR0912, PLR0913
 
 
 def main() -> None:
-    """Ingest Dagster run info from the command line."""
+    """Ingest Dagster runs and job-independent L0 materializations."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--namespace", default="prod")
     parser.add_argument("--start-date", default="20260914")
@@ -412,15 +413,24 @@ def main() -> None:
         tzinfo=datetime.UTC
     )
     create_db_and_tables()
-    processed = asyncio.run(
-        ingest_runs(
+
+    async def ingest_all() -> tuple[int, int]:
+        run_count = await ingest_runs(
             start_datetime=start_datetime,
             end_datetime=end_datetime,
             namespace_name=args.namespace,
             show_progress=True,
         )
-    )
-    print(f"Processed {processed} successful runs")
+        l0_count = await ingest_l0_materializations(
+            start_datetime=start_datetime,
+            end_datetime=end_datetime,
+            namespace_name=args.namespace,
+            show_progress=True,
+        )
+        return run_count, l0_count
+
+    run_count, l0_count = asyncio.run(ingest_all())
+    print(f"Processed {run_count} runs and {l0_count} L0 materializations")
 
 
 if __name__ == "__main__":

@@ -169,3 +169,21 @@ def test_latest_jobs_only_use_globally_observed_matching_partition_types() -> No
         {"job_key": "hit_l1_a", "partition": "daily_1"},
         {"job_key": "hit_l1_b", "partition": "repoint42_1"},
     ]
+
+
+def test_dependency_partition_types_match_concrete_cadence_labels() -> None:
+    data_df = _dataframe().iloc[[0]].copy()
+    data_df.loc[:, "instrument"] = "idex"
+    data_df.loc[:, "job_key"] = "obsolete"
+    data_df.loc[:, "partition"] = "idex10_1"
+    data_df.loc[:, "partition_label"] = "idex10"
+    definition = _definition("idex_l0_none", "idex_l0_raw", "10d")
+
+    result = Projector(lambda _instruments: {definition.job_key: definition}).apply(
+        data_df,
+        ProjectionSpec(job_projection_mode=JobProjectionMode.LATEST_JOBS_ONLY),
+    )
+
+    assert result[["job_key", "partition", "status"]].to_dict("records") == [
+        {"job_key": "idex_l0_none", "partition": "idex10_1", "status": "not-run"}
+    ]
