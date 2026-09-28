@@ -11,6 +11,7 @@ from ..backend.filteredtable import FilteredTable, SortSpec
 from ..backend.settings import DashboardSettings
 from .filtercontrols import FilterControls
 from .navigation import PaneNavigator
+from .projectioncontrols import ProjectionControls
 from .status import StatusSummary
 from .tablerenderer import DashboardTableRenderer, TableRenderOptions
 from .uielem import UIElem
@@ -73,6 +74,10 @@ class FilteredTableView(FilteredTableViewBase):
             initial_arguments=self.settings.filtering,
             on_change=self.update_table,
         )
+        self.projection = ProjectionControls(
+            self.settings.projection,
+            self.update_projection,
+        ).build()
         self.navigator = PaneNavigator(
             self.settings.active_agg_preset,
             self.settings.agg_specs,
@@ -98,16 +103,28 @@ class FilteredTableView(FilteredTableViewBase):
         self.table.set_query(query)
         self.table.refresh_data()
         self.full_data_df = self.table.transform_data()
-        self.filters.update_query(self.full_data_df)
-        self.status_summary.update_query(self.full_data_df, select_new_values=True)
+        self._update_projected_query_controls()
         self.filters.restore_initial_arguments()
         self.update_table()
+
+    def update_projection(self) -> None:
+        """Refresh projection-dependent controls and rebuild the table."""
+        self._update_projected_query_controls()
+        self.update_table()
+
+    def _update_projected_query_controls(self) -> None:
+        projected_df = self.table.transform_data(
+            projection_spec=self.projection.spec,
+        )
+        self.filters.update_query(projected_df)
+        self.status_summary.update_query(projected_df, select_new_values=True)
 
     def update_table(self) -> None:
         """Apply current state and rebuild the table and summaries."""
         persistent_filters = self.filters.arguments()
         effective_filters = self.navigator.apply_temporary_filters(persistent_filters)
         data_df = self.table.transform_data(
+            projection_spec=self.projection.spec,
             filter_kwargs=effective_filters,
             agg_spec=self.navigator.agg_spec,
             sort_specs=_SORT_SPECS,
@@ -141,6 +158,7 @@ class FilteredTableView(FilteredTableViewBase):
             DashboardSettings(
                 active_agg_preset=self.navigator.agg_spec.preset,
                 agg_specs=self.navigator.agg_specs,
+                projection=self.projection.spec,
                 filtering=persistent_filters,
             )
         )

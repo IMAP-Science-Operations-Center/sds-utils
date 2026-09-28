@@ -18,6 +18,7 @@ from .filtersbase import (
     StringRegisteredFilter,
     filter_property,
 )
+from .projectionbase import ProjectionSpec, Projector
 
 
 class SortSpec(BaseModel):
@@ -83,14 +84,16 @@ class Filters(FiltersBase):
 
 
 class FilteredTable:
-    """Coordinate data loading, registered filters, and aggregations."""
+    """Coordinate data loading, projection, filtering, and aggregation."""
 
     def __init__(
         self,
         data_source: DataSourceBase,
+        projector: Projector | None = None,
         filters: Filters | None = None,
         agg: Aggregator | None = None,
     ) -> None:
+        self._projector = projector or Projector()
         self._filters = filters or Filters()
         self._agg = agg or Aggregator()
         self._data_source = data_source
@@ -114,14 +117,17 @@ class FilteredTable:
 
     def transform_data(
         self,
+        projection_spec: ProjectionSpec | None = None,
         filter_kwargs: FilterArguments | None = None,
         agg_spec: AggSpec | None = None,
         sort_specs: dict[str, SortSpec] | None = None,
     ) -> pd.DataFrame:
-        """Apply requested filters and aggregation to the loaded dataframe."""
+        """Apply projection, filtering, aggregation, and sorting in that order."""
         if self._full_data_df is None:
             self.refresh_data()
         data_df = self._full_data_df
+        if projection_spec is not None:
+            data_df = self._projector.apply(data_df, projection_spec)
         data_df = self._filters.apply(data_df, filter_kwargs)
         if agg_spec is not None:
             data_df = self._agg.apply(data_df, agg_spec)

@@ -2,6 +2,7 @@
 
 import logging
 import re
+from collections.abc import Collection
 from functools import lru_cache
 from typing import NamedTuple
 
@@ -31,6 +32,16 @@ class JobKeyParts(NamedTuple):
     instrument: str | None
     data_level: str | None
     descriptor: str | None
+
+
+class CurrentJobDefinition(NamedTuple):
+    """Normalized current job identity and output asset set."""
+
+    job_key: str
+    instrument: str
+    data_level: str
+    descriptor: str
+    expected_assets: frozenset[tuple[str, ...]]
 
 
 def _asset_parts(path: list[str]) -> tuple[str, str] | None:
@@ -88,6 +99,31 @@ def _job_outputs_for_instrument(
         else:
             output_sets[names] = identity
     return output_sets
+
+
+def current_job_definitions(
+    instruments: Collection[str],
+) -> dict[str, CurrentJobDefinition]:
+    """Load normalized current job definitions for the requested instruments."""
+    definitions: dict[str, CurrentJobDefinition] = {}
+    for instrument in sorted(set(instruments)):
+        for assets, identity in _job_outputs_for_instrument(instrument).items():
+            if identity is None:
+                continue
+            data_level, descriptor = identity
+            job_key = f"{instrument}_{data_level}_{descriptor}"
+            definition = CurrentJobDefinition(
+                job_key=job_key,
+                instrument=instrument,
+                data_level=data_level,
+                descriptor=descriptor,
+                expected_assets=frozenset((asset,) for asset in assets),
+            )
+            existing = definitions.get(job_key)
+            if existing is not None and existing != definition:
+                raise ValueError(f"Ambiguous current job definition: {job_key}")
+            definitions[job_key] = definition
+    return definitions
 
 
 def derive_job_key(

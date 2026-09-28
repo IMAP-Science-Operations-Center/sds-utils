@@ -5,6 +5,10 @@ from sqlmodel import Session, SQLModel, create_engine
 
 from sds_utils.dashboard.backend.aggbase import AggPreset, AggSpec
 from sds_utils.dashboard.backend.db.models import PersistentSettings, UserProfile
+from sds_utils.dashboard.backend.projectionbase import (
+    JobProjectionMode,
+    ProjectionSpec,
+)
 from sds_utils.dashboard.backend.settings import DashboardSettings
 from sds_utils.dashboard.backend.settings_repository import SettingsRepository
 
@@ -16,6 +20,7 @@ def test_dashboard_settings_have_safe_defaults() -> None:
     assert settings.agg_specs == {
         preset: AggSpec(preset=preset) for preset in AggPreset
     }
+    assert settings.projection == ProjectionSpec()
     assert settings.filtering == {}
 
 
@@ -54,6 +59,9 @@ def test_settings_tables_persist_valid_json() -> None:
     )
     SQLModel.metadata.create_all(db_engine)
     settings = DashboardSettings(
+        projection=ProjectionSpec(
+            job_projection_mode=JobProjectionMode.LATEST_JOBS_ONLY
+        ),
         filtering={"status": {"excluded_values_regex": "failed"}}
     )
 

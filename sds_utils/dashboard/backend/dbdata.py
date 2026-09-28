@@ -70,6 +70,9 @@ _COLUMNS = (
     "parent_run_id",
     "root_run_id",
     "selected_assets",
+    "planned_assets",
+    "expected_assets",
+    "source_kind",
     "tags",
     *_COUNT_COLUMNS,
     "skip_info",
@@ -263,6 +266,13 @@ class DBDataSource(DataSourceBase):
                     "parent_run_id": run.parent_run_id,
                     "root_run_id": run.root_run_id,
                     "selected_assets": run.selected_assets,
+                    "planned_assets": (
+                        derived.planned_assets if derived is not None else []
+                    ),
+                    "expected_assets": (
+                        derived.expected_assets if derived is not None else []
+                    ),
+                    "source_kind": "dagster_run",
                     "tags": run.tags,
                     "start_date": None,
                     "end_date": None,

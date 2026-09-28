@@ -14,6 +14,7 @@ from pydantic import (
 
 from .aggbase import AggPreset, AggSpec
 from .filtersbase import FilterArguments
+from .projectionbase import ProjectionSpec
 
 
 def _default_agg_specs() -> dict[AggPreset, AggSpec]:
@@ -22,12 +23,13 @@ def _default_agg_specs() -> dict[AggPreset, AggSpec]:
 
 
 class DashboardSettings(BaseModel):
-    """Aggregation and filtering choices persisted for one user."""
+    """Projection, aggregation, and filtering choices persisted for one user."""
 
     model_config = ConfigDict(extra="forbid")
 
     active_agg_preset: AggPreset = AggPreset.RAW
     agg_specs: dict[AggPreset, AggSpec] = Field(default_factory=_default_agg_specs)
+    projection: ProjectionSpec = Field(default_factory=ProjectionSpec)
     filtering: FilterArguments = Field(default_factory=dict)
 
     @field_validator("agg_specs", mode="before")

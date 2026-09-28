@@ -25,10 +25,18 @@ def test_dependency_yaml_output_names_match_dagster_asset_names(
     jobkey._job_outputs_for_instrument.cache_clear()
     try:
         parts = jobkey.derive_job_key("__ASSET_JOB", [["hit_l2_summedintensity"]])
+        definitions = jobkey.current_job_definitions(["hit"])
     finally:
         jobkey._job_outputs_for_instrument.cache_clear()
 
     assert parts == ("hit_l2_summedintensity", "hit", "l2", "summedintensity")
+    assert definitions["hit_l2_summedintensity"] == jobkey.CurrentJobDefinition(
+        job_key="hit_l2_summedintensity",
+        instrument="hit",
+        data_level="l2",
+        descriptor="summedintensity",
+        expected_assets=frozenset({("hit_l2_summedintensity",)}),
+    )
 
 
 def test_exact_yaml_output_set_resolves_named_job(

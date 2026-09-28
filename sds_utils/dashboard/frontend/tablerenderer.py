@@ -50,6 +50,9 @@ class DashboardTableRenderer:
             "job_key",
             "tags",
             "selected_assets",
+            "planned_assets",
+            "expected_assets",
+            "source_kind",
             "parent_run_id",
             "root_run_id",
             "skip_info",
@@ -159,6 +162,7 @@ class DashboardTableRenderer:
             f"""
             <q-td :props="props">
                 <a
+                    v-if="props.value"
                     :href='{dagster_url} + "/runs/" + props.value'
                     class="text-blue-8"
                     target="_blank"
