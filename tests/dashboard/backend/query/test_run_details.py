@@ -1,4 +1,4 @@
-"""Tests for successful-run detail ingestion."""
+"""Tests for run-detail ingestion."""
 
 import asyncio
 import datetime
@@ -164,6 +164,7 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
             namespace.id, "planned-overrides-selection-run"
         )
         failed_run = _cached_run(namespace.id, "failed-run", status="FAILURE")
+        active_run = _cached_run(namespace.id, "active-run", status="STARTED")
         previously_derived_run = _cached_run(namespace.id, "already-derived-run")
         session.add_all(
             [
@@ -175,6 +176,7 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
                 planned_only_run,
                 planned_overrides_selection_run,
                 failed_run,
+                active_run,
                 previously_derived_run,
             ]
         )
@@ -184,6 +186,7 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
             DerivedJobRun(
                 cached_run_id=previously_derived_run.id,
                 dashboard_status="materialized",
+                run_completed=True,
             )
         )
         session.commit()
@@ -196,7 +199,7 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
         )
     )
 
-    assert processed == 7
+    assert processed == 9
     assert len(client.requested_run_ids) == 1
     assert set(client.requested_run_ids[0]) == {
         "materialized-run",
@@ -206,6 +209,8 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
         "different-skip-info-run",
         "planned-only-run",
         "planned-overrides-selection-run",
+        "failed-run",
+        "active-run",
     }
     with Session(db_engine) as session:
         cached_runs = {
@@ -268,6 +273,21 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
     assert planned_override.n_expected == 1
     assert planned_override.n_missing == 1
 
+    failed = derived_runs[cached_runs["failed-run"].id]
+    assert failed.dashboard_status == "failed"
+    assert failed.run_completed is True
+    assert failed.expected_assets == [["asset-a"], ["asset-b"]]
+
+    active = derived_runs[cached_runs["active-run"].id]
+    assert active.dashboard_status == "materializing"
+    assert active.run_completed is False
+    assert active.planned_assets == []
+    assert active.expected_assets == [["asset-a"], ["asset-b"]]
+
+    planned_only = derived_runs[cached_runs["planned-only-run"].id]
+    assert planned_only.planned_assets == [["planned-asset"]]
+    assert planned_only.expected_assets == [["planned-asset"]]
+
     for derived in derived_runs.values():
         if derived.n_expected is None:
             continue
@@ -278,7 +298,7 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
             derived.n_materialized + derived.n_skipped + derived.n_missing
         )
 
-    assert len(events) == 10
+    assert len(events) == 14
     planned_event = next(
         event
         for event in events
@@ -307,3 +327,15 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
         event.payload["skip_reason"] == "Skipped - Missing dependencies"
         for event in skipped_events
     )
+
+    processed_again = asyncio.run(
+        ingest_run_details(
+            db_engine=db_engine,
+            client=cast(DagsterGraphQLClient, client),
+        )
+    )
+
+    assert processed_again == 1
+    assert client.requested_run_ids[-1] == ["active-run"]
+    with Session(db_engine) as session:
+        assert len(session.exec(select(CachedRunEvent)).all()) == 14

@@ -1,17 +1,18 @@
-"""Populate cached event details and derived facts for successful Dagster runs."""
+"""Populate cached event details and derived facts for Dagster runs."""
 
 import argparse
 import asyncio
 import datetime
 import json
 import os
+from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import or_
 from sqlalchemy.engine import Engine
-from sqlmodel import Session, col, delete, select
+from sqlmodel import Session, col, select
 from tqdm.auto import tqdm
 
 from ..db import create_db_and_tables, engine
@@ -40,6 +41,17 @@ RELEVANT_EVENT_TYPES = (
     "ObservationEvent",
 )
 LEGACY_SKIP_EVENT_TYPE = "ExecutionStepSkippedEvent"
+_TERMINAL_STATUSES = {"SUCCESS", "FAILURE", "CANCELED"}
+_NON_SUCCESS_STATUS_MAP = {
+    "QUEUED": "materializing",
+    "NOT_STARTED": "materializing",
+    "MANAGED": "materializing",
+    "STARTING": "materializing",
+    "STARTED": "materializing",
+    "FAILURE": "failed",
+    "CANCELING": "canceling",
+    "CANCELED": "canceled",
+}
 
 
 class RunDetailsError(RuntimeError):
@@ -244,11 +256,10 @@ async def _fetch_details_batch(
     return events_by_run
 
 
-def _pending_successful_runs(
+def _pending_runs(
     session: Session,
     *,
     namespace_id: int,
-    limit: int,
 ) -> list[CachedDagsterRun]:
     statement = (
         select(CachedDagsterRun)
@@ -258,36 +269,25 @@ def _pending_successful_runs(
         )
         .where(
             CachedDagsterRun.namespace_id == namespace_id,
-            CachedDagsterRun.dagster_status == "SUCCESS",
-            col(DerivedJobRun.id).is_(None),
+            or_(
+                col(DerivedJobRun.id).is_(None),
+                col(DerivedJobRun.run_completed).is_(False),
+            ),
         )
         .order_by(col(CachedDagsterRun.creation_time).desc())
-        .limit(limit)
     )
     return list(session.exec(statement))
-
-
-def _pending_successful_run_count(session: Session, *, namespace_id: int) -> int:
-    statement = (
-        select(func.count())
-        .select_from(CachedDagsterRun)
-        .outerjoin(
-            DerivedJobRun,
-            col(DerivedJobRun.cached_run_id) == CachedDagsterRun.id,
-        )
-        .where(
-            CachedDagsterRun.namespace_id == namespace_id,
-            CachedDagsterRun.dagster_status == "SUCCESS",
-            col(DerivedJobRun.id).is_(None),
-        )
-    )
-    return session.exec(statement).one()
 
 
 def _asset_key(asset_path: tuple[str, ...] | None) -> str | None:
     if asset_path is None:
         return None
     return json.dumps(asset_path, separators=(",", ":"))
+
+
+def _asset_paths_json(asset_paths: set[tuple[str, ...]]) -> list[list[str]]:
+    """Convert a normalized asset set into stable JSON-compatible paths."""
+    return [list(path) for path in sorted(asset_paths)]
 
 
 def _explicit_skip_summary(
@@ -358,9 +358,8 @@ def _derive_run(
     )
     n_missing = len(non_materialized_assets) - n_skipped
 
-    return DerivedJobRun(
-        cached_run_id=cached_run.id,
-        dashboard_status=(
+    if cached_run.dagster_status == "SUCCESS":
+        dashboard_status = (
             "missing"
             if n_missing > 0
             else "skipped"
@@ -368,7 +367,19 @@ def _derive_run(
             else "materialized"
             if n_expected > 0 and n_materialized == n_expected
             else "not-found"
-        ),
+        )
+    else:
+        dashboard_status = _NON_SUCCESS_STATUS_MAP.get(
+            cached_run.dagster_status,
+            "unknown",
+        )
+
+    return DerivedJobRun(
+        cached_run_id=cached_run.id,
+        dashboard_status=dashboard_status,
+        run_completed=cached_run.dagster_status in _TERMINAL_STATUSES,
+        planned_assets=_asset_paths_json(planned_assets),
+        expected_assets=_asset_paths_json(expected_assets),
         n_expected=n_expected,
         n_materialized=n_materialized,
         n_skipped=n_skipped,
@@ -386,32 +397,64 @@ def _store_details_batch(
     run_stored: Callable[[], None] | None = None,
 ) -> None:
     run_ids = [run.run_id for run in runs]
-    session.exec(
-        delete(CachedRunEvent).where(
-            col(CachedRunEvent.namespace_id) == namespace_id,
-            col(CachedRunEvent.run_id).in_(run_ids),
-            col(CachedRunEvent.event_type).in_(
-                (*RELEVANT_EVENT_TYPES, LEGACY_SKIP_EVENT_TYPE)
-            ),
-        )
+    existing_event_counts = Counter(
+        (run_id, event_key)
+        for run_id, event_key in session.exec(
+            select(CachedRunEvent.run_id, CachedRunEvent.event_key).where(
+                CachedRunEvent.namespace_id == namespace_id,
+                col(CachedRunEvent.run_id).in_(run_ids),
+                col(CachedRunEvent.event_type).in_(
+                    (*RELEVANT_EVENT_TYPES, LEGACY_SKIP_EVENT_TYPE)
+                ),
+            )
+        ).all()
     )
+    derived_by_run_id = {
+        derived.cached_run_id: derived
+        for derived in session.exec(
+            select(DerivedJobRun).where(
+                col(DerivedJobRun.cached_run_id).in_(
+                    [run.id for run in runs if run.id is not None]
+                )
+            )
+        )
+    }
 
     for cached_run in runs:
         events = events_by_run[cached_run.run_id]
-        session.add(_derive_run(cached_run, events))
+        derived = _derive_run(cached_run, events)
+        existing_derived = derived_by_run_id.get(derived.cached_run_id)
+        if existing_derived is None:
+            session.add(derived)
+        else:
+            existing_derived.dashboard_status = derived.dashboard_status
+            existing_derived.run_completed = derived.run_completed
+            existing_derived.planned_assets = derived.planned_assets
+            existing_derived.expected_assets = derived.expected_assets
+            existing_derived.n_expected = derived.n_expected
+            existing_derived.n_materialized = derived.n_materialized
+            existing_derived.n_skipped = derived.n_skipped
+            existing_derived.n_missing = derived.n_missing
+            existing_derived.skip_info = derived.skip_info
+            session.add(existing_derived)
         for event in events:
             asset_key = _asset_key(event.asset_path)
+            event_key = CachedRunEvent.build_event_key(
+                run_id=event.run_id,
+                event_type=event.event_type,
+                timestamp=event.timestamp,
+                step_key=event.step_key,
+                asset_key=asset_key,
+                partition=event.partition or cached_run.partition,
+            )
+            event_identity = (event.run_id, event_key)
+            if existing_event_counts[event_identity]:
+                existing_event_counts[event_identity] -= 1
+                continue
             session.add(
                 CachedRunEvent(
                     namespace_id=namespace_id,
-                    event_key=CachedRunEvent.build_event_key(
-                        run_id=event.run_id,
-                        event_type=event.event_type,
-                        timestamp=event.timestamp,
-                        step_key=event.step_key,
-                        asset_key=asset_key,
-                        partition=event.partition or cached_run.partition,
-                    ),
+                    event_key=event_key,
                     run_id=event.run_id,
                     event_type=event.event_type,
                     timestamp=event.timestamp,
@@ -438,7 +481,7 @@ async def ingest_run_details(  # noqa: PLR0913
     db_engine: Engine = engine,
     client: DagsterGraphQLClient | None = None,
 ) -> int:
-    """Derive and cache event details for successful runs not yet processed."""
+    """Derive and cache event details for new or incomplete runs."""
     if batch_size <= 0 or event_page_size <= 0 or pagination_concurrency <= 0:
         raise ValueError("Batch, page, and concurrency sizes must be positive")
 
@@ -452,10 +495,11 @@ async def ingest_run_details(  # noqa: PLR0913
             raise RunDetailsError(f"Cache namespace {namespace_name!r} does not exist")
         namespace_id = namespace.id
         graphql_url = namespace.graphql_url
-        pending_count = _pending_successful_run_count(
+        pending_runs = _pending_runs(
             session,
             namespace_id=namespace_id,
         )
+        pending_count = len(pending_runs)
 
     if pending_count == 0:
         return 0
@@ -476,16 +520,8 @@ async def ingest_run_details(  # noqa: PLR0913
         unit="run",
     )
     try:
-        while True:
-            with Session(db_engine) as session:
-                runs = _pending_successful_runs(
-                    session,
-                    namespace_id=namespace_id,
-                    limit=batch_size,
-                )
-            if not runs:
-                return processed_count
-
+        for batch_start in range(0, pending_count, batch_size):
+            runs = pending_runs[batch_start : batch_start + batch_size]
             events_by_run = await _fetch_details_batch(
                 client,
                 run_ids=[run.run_id for run in runs],
@@ -501,6 +537,7 @@ async def ingest_run_details(  # noqa: PLR0913
                     run_stored=progress.update,
                 )
                 processed_count += len(runs)
+        return processed_count
     finally:
         progress.close()
         if owns_client:
@@ -508,7 +545,7 @@ async def ingest_run_details(  # noqa: PLR0913
 
 
 def main() -> None:
-    """Ingest outstanding successful run details from the command line."""
+    """Ingest outstanding run details from the command line."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--namespace", default="prod")
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)

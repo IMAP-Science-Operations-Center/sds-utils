@@ -108,6 +108,15 @@ class DerivedJobRun(SQLModel, table=True):
         index=True,
     )
     dashboard_status: str = Field(index=True)
+    run_completed: bool = Field(default=False, index=True)
+    planned_assets: list[list[str]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
+    expected_assets: list[list[str]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
     n_expected: int | None = None
     n_materialized: int | None = None
     n_skipped: int | None = None
