@@ -24,7 +24,16 @@ from .fragments import (
     PlannedMaterializationEventDetails,
     PlannedMaterializationEventDetailsAssetKey,
 )
-from .input_types import ExecutionTag, RunsFilter
+from .input_types import AssetKeyInput, ExecutionTag, RunsFilter
+from .l_0_materializations import (
+    L0Materializations,
+    L0MaterializationsAssetNodeOrErrorAssetNode,
+    L0MaterializationsAssetNodeOrErrorAssetNodeAssetMaterializations,
+    L0MaterializationsAssetNodeOrErrorAssetNodeAssetMaterializationsAssetKey,
+    L0MaterializationsAssetNodeOrErrorAssetNodeAssetMaterializationsMetadataEntriesMetadataEntry,
+    L0MaterializationsAssetNodeOrErrorAssetNodeAssetMaterializationsMetadataEntriesTextMetadataEntry,
+    L0MaterializationsAssetNodeOrErrorAssetNotFoundError,
+)
 from .run_count import (
     RunCount,
     RunCountRunsOrErrorInvalidPipelineRunsFilterError,
@@ -139,6 +148,7 @@ from .runs_for_ingestion import (
 )
 
 __all__ = [
+    "AssetKeyInput",
     "AsyncBaseClient",
     "BaseModel",
     "DagsterGraphQLClient",
@@ -148,6 +158,13 @@ __all__ = [
     "GraphQLClientGraphQLMultiError",
     "GraphQLClientHttpError",
     "GraphQLClientInvalidResponseError",
+    "L0Materializations",
+    "L0MaterializationsAssetNodeOrErrorAssetNode",
+    "L0MaterializationsAssetNodeOrErrorAssetNodeAssetMaterializations",
+    "L0MaterializationsAssetNodeOrErrorAssetNodeAssetMaterializationsAssetKey",
+    "L0MaterializationsAssetNodeOrErrorAssetNodeAssetMaterializationsMetadataEntriesMetadataEntry",
+    "L0MaterializationsAssetNodeOrErrorAssetNodeAssetMaterializationsMetadataEntriesTextMetadataEntry",
+    "L0MaterializationsAssetNodeOrErrorAssetNotFoundError",
     "LegacySkipEventDetails",
     "MaterializationEventDetails",
     "MaterializationEventDetailsAssetKey",

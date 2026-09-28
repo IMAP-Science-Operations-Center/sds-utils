@@ -5,7 +5,8 @@ from typing import Any, Optional, Union
 
 from .async_base_client import AsyncBaseClient
 from .base_model import UNSET, UnsetType
-from .input_types import RunsFilter
+from .input_types import AssetKeyInput, RunsFilter
+from .l_0_materializations import L0Materializations
 from .run_count import RunCount
 from .run_details import RunDetails
 from .run_details_page import RunDetailsPage
@@ -17,6 +18,54 @@ def gql(q: str) -> str:
 
 
 class DagsterGraphQLClient(AsyncBaseClient):
+    async def l_0_materializations(
+        self,
+        asset_key: AssetKeyInput,
+        limit: int,
+        before_timestamp_millis: Union[Optional[str], UnsetType] = UNSET,
+        **kwargs: Any,
+    ) -> L0Materializations:
+        query = gql("""
+            query L0Materializations($assetKey: AssetKeyInput!, $limit: Int!, $beforeTimestampMillis: String) {
+              assetNodeOrError(assetKey: $assetKey) {
+                __typename
+                ... on AssetNode {
+                  assetMaterializations(
+                    limit: $limit
+                    beforeTimestampMillis: $beforeTimestampMillis
+                  ) {
+                    runId
+                    timestamp
+                    partition
+                    assetKey {
+                      path
+                    }
+                    metadataEntries {
+                      __typename
+                      label
+                      ... on TextMetadataEntry {
+                        text
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            """)
+        variables: dict[str, object] = {
+            "assetKey": asset_key,
+            "limit": limit,
+            "beforeTimestampMillis": before_timestamp_millis,
+        }
+        response = await self.execute(
+            query=query,
+            operation_name="L0Materializations",
+            variables=variables,
+            **kwargs,
+        )
+        data = self.get_data(response)
+        return L0Materializations.model_validate(data)
+
     async def run_count(
         self, filter_: Union[Optional[RunsFilter], UnsetType] = UNSET, **kwargs: Any
     ) -> RunCount:

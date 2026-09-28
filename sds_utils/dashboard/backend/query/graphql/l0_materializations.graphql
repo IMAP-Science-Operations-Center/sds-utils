@@ -1,0 +1,29 @@
+query L0Materializations(
+  $assetKey: AssetKeyInput!
+  $limit: Int!
+  $beforeTimestampMillis: String
+) {
+  assetNodeOrError(assetKey: $assetKey) {
+    __typename
+    ... on AssetNode {
+      assetMaterializations(
+        limit: $limit
+        beforeTimestampMillis: $beforeTimestampMillis
+      ) {
+        runId
+        timestamp
+        partition
+        assetKey {
+          path
+        }
+        metadataEntries {
+          __typename
+          label
+          ... on TextMetadataEntry {
+            text
+          }
+        }
+      }
+    }
+  }
+}

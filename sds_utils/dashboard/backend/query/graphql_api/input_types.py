@@ -9,6 +9,10 @@ from .base_model import BaseModel
 from .enums import RunStatus
 
 
+class AssetKeyInput(BaseModel):
+    path: list[str]
+
+
 class ExecutionTag(BaseModel):
     key: str
     value: str
