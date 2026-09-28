@@ -41,6 +41,7 @@ class CurrentJobDefinition(NamedTuple):
     instrument: str
     data_level: str
     descriptor: str
+    partition_type: str
     expected_assets: frozenset[tuple[str, ...]]
 
 
@@ -54,27 +55,34 @@ def _asset_parts(path: list[str]) -> tuple[str, str] | None:
 
 
 @lru_cache(maxsize=32)
-def _job_outputs_for_instrument(
-    instrument: str,
-) -> dict[frozenset[str], tuple[str, str] | None]:
-    """Load and cache output sets from the current dev dependency YAML."""
+def _dependencies_for_instrument(instrument: str) -> dict[str, object]:
+    """Load and cache one instrument's current dependency YAML."""
     if not _INSTRUMENT_PATTERN.fullmatch(instrument):
         return {}
     url = _DEPENDENCIES_URL.format(instrument=instrument)
     try:
         response = httpx.get(url, timeout=10)
         response.raise_for_status()
-        dependencies = yaml.safe_load(response.text)
+        dependencies: object = yaml.safe_load(response.text)
     except (httpx.HTTPError, yaml.YAMLError) as error:
         logger.warning("Could not load job definitions for %s: %s", instrument, error)
         return {}
 
-    output_sets: dict[frozenset[str], tuple[str, str] | None] = {}
     if not isinstance(dependencies, dict):
         logger.warning("Unexpected job definitions for %s at %s", instrument, url)
-        return output_sets
+        return {}
+    return {str(key): value for key, value in dependencies.items()}
+
+
+@lru_cache(maxsize=32)
+def _job_outputs_for_instrument(
+    instrument: str,
+) -> dict[frozenset[str], tuple[str, str] | None]:
+    """Load and cache output sets from the current dev dependency YAML."""
+    output_sets: dict[frozenset[str], tuple[str, str] | None] = {}
+    dependencies = _dependencies_for_instrument(instrument)
     for job_name, spec in dependencies.items():
-        match = _YAML_JOB_PATTERN.fullmatch(str(job_name))
+        match = _YAML_JOB_PATTERN.fullmatch(job_name)
         if match is None or not isinstance(spec, dict):
             continue
         outputs = spec.get("outputs")
@@ -107,17 +115,40 @@ def current_job_definitions(
     """Load normalized current job definitions for the requested instruments."""
     definitions: dict[str, CurrentJobDefinition] = {}
     for instrument in sorted(set(instruments)):
-        for assets, identity in _job_outputs_for_instrument(instrument).items():
-            if identity is None:
+        for job_name, spec in _dependencies_for_instrument(instrument).items():
+            match = _YAML_JOB_PATTERN.fullmatch(job_name)
+            if match is None or not isinstance(spec, dict):
                 continue
-            data_level, descriptor = identity
+            partition_type = spec.get("partition")
+            outputs = spec.get("outputs")
+            if not isinstance(partition_type, str) or not isinstance(outputs, list):
+                continue
+            expected_assets = frozenset(
+                (
+                    (
+                        f"{output['source']}_{output['data_type']}_"
+                        f"{output['descriptor']}"
+                    ).replace("-", ""),
+                )
+                for output in outputs
+                if isinstance(output, dict)
+                and all(
+                    isinstance(output.get(field), str)
+                    for field in ("source", "data_type", "descriptor")
+                )
+            )
+            if not expected_assets:
+                continue
+            data_level = match.group(1).strip()
+            descriptor = match.group(2).strip().replace("-", "")
             job_key = f"{instrument}_{data_level}_{descriptor}"
             definition = CurrentJobDefinition(
                 job_key=job_key,
                 instrument=instrument,
                 data_level=data_level,
                 descriptor=descriptor,
-                expected_assets=frozenset((asset,) for asset in assets),
+                partition_type=partition_type,
+                expected_assets=expected_assets,
             )
             existing = definitions.get(job_key)
             if existing is not None and existing != definition:

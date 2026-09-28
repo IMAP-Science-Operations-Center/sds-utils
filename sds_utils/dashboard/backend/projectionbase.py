@@ -190,7 +190,7 @@ class Projector:
         )
         phantom_rows: list[dict[str, Any]] = []
         for definition in definitions.values():
-            for partition_row in partition_rows.get(definition.instrument, []):
+            for partition_row in partition_rows.get(definition.partition_type, []):
                 partition = partition_row.get("partition")
                 if (definition.job_key, partition) in actual_pairs:
                     continue
@@ -211,15 +211,15 @@ class Projector:
         result: dict[str, list[dict[str, Any]]] = {}
         seen: set[tuple[str, object]] = set()
         for row in data_df.to_dict("records"):
-            instrument = row.get("instrument")
+            partition_type = row.get("partition_label")
             partition = row.get("partition")
-            if not isinstance(instrument, str) or pd.isna(partition):
+            if not isinstance(partition_type, str) or pd.isna(partition):
                 continue
-            identity = (instrument, partition)
+            identity = (partition_type, partition)
             if identity in seen:
                 continue
             seen.add(identity)
-            result.setdefault(instrument, []).append(row)
+            result.setdefault(partition_type, []).append(row)
         return result
 
     @staticmethod

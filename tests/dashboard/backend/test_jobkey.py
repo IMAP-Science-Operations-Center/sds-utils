@@ -11,6 +11,7 @@ def test_dependency_yaml_output_names_match_dagster_asset_names(
 ) -> None:
     yaml_text = """
 (l2, summed-intensity):
+  partition: repoint
   outputs:
     - source: hit
       data_type: l2
@@ -22,11 +23,13 @@ def test_dependency_yaml_output_names_match_dagster_asset_names(
         return httpx.Response(200, text=yaml_text, request=httpx.Request("GET", url))
 
     monkeypatch.setattr(jobkey.httpx, "get", fake_get)
+    jobkey._dependencies_for_instrument.cache_clear()
     jobkey._job_outputs_for_instrument.cache_clear()
     try:
         parts = jobkey.derive_job_key("__ASSET_JOB", [["hit_l2_summedintensity"]])
         definitions = jobkey.current_job_definitions(["hit"])
     finally:
+        jobkey._dependencies_for_instrument.cache_clear()
         jobkey._job_outputs_for_instrument.cache_clear()
 
     assert parts == ("hit_l2_summedintensity", "hit", "l2", "summedintensity")
@@ -35,6 +38,7 @@ def test_dependency_yaml_output_names_match_dagster_asset_names(
         instrument="hit",
         data_level="l2",
         descriptor="summedintensity",
+        partition_type="repoint",
         expected_assets=frozenset({("hit_l2_summedintensity",)}),
     )
 

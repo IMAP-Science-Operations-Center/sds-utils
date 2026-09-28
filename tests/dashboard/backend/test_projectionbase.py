@@ -12,13 +12,16 @@ from sds_utils.dashboard.backend.projectionbase import (
 )
 
 
-def _definition(job_key: str, asset: str) -> CurrentJobDefinition:
+def _definition(
+    job_key: str, asset: str, partition_type: str = "daily"
+) -> CurrentJobDefinition:
     instrument, data_level, descriptor = job_key.split("_", 2)
     return CurrentJobDefinition(
         job_key,
         instrument,
         data_level,
         descriptor,
+        partition_type,
         frozenset({(asset,)}),
     )
 
@@ -33,6 +36,7 @@ def _dataframe() -> pd.DataFrame:
                 "descriptor": "a",
                 "job_key": "hit_l1_a",
                 "partition": "daily_1",
+                "partition_label": "daily",
                 "planned_assets": [["asset-a"]],
                 "selected_assets": [],
                 "expected_assets": [["asset-a"]],
@@ -49,6 +53,7 @@ def _dataframe() -> pd.DataFrame:
                 "descriptor": "b",
                 "job_key": "hit_l1_b",
                 "partition": "daily_1",
+                "partition_label": "daily",
                 "planned_assets": [],
                 "selected_assets": [],
                 "expected_assets": [],
@@ -65,6 +70,7 @@ def _dataframe() -> pd.DataFrame:
                 "descriptor": "old",
                 "job_key": "hit_l1_old",
                 "partition": "daily_1",
+                "partition_label": "daily",
                 "planned_assets": [["old-asset"]],
                 "selected_assets": [],
                 "expected_assets": [["old-asset"]],
@@ -131,3 +137,35 @@ def test_legacy_runs_are_actual_row_complement_of_latest_jobs() -> None:
 
     assert result["run_id"].tolist() == ["obsolete"]
     assert result["job_projection"].tolist() == ["legacy"]
+
+
+def test_latest_jobs_only_use_globally_observed_matching_partition_types() -> None:
+    data_df = _dataframe().iloc[[0]].copy()
+    repoint_row = data_df.iloc[0].copy()
+    repoint_row.update(
+        {
+            "run_id": "other-instrument-repoint",
+            "instrument": "mag",
+            "job_key": "mag_l1_a",
+            "partition": "repoint42_1",
+            "partition_label": "repoint",
+        }
+    )
+    data_df = pd.concat([data_df, repoint_row.to_frame().T], ignore_index=True)
+    definitions = {
+        definition.job_key: definition
+        for definition in (
+            _definition("hit_l1_a", "asset-a", "daily"),
+            _definition("hit_l1_b", "asset-b", "repoint"),
+        )
+    }
+
+    result = Projector(lambda _instruments: definitions).apply(
+        data_df,
+        ProjectionSpec(job_projection_mode=JobProjectionMode.LATEST_JOBS_ONLY),
+    )
+
+    assert result[["job_key", "partition"]].to_dict("records") == [
+        {"job_key": "hit_l1_a", "partition": "daily_1"},
+        {"job_key": "hit_l1_b", "partition": "repoint42_1"},
+    ]
