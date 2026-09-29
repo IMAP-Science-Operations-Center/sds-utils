@@ -123,6 +123,7 @@ class DerivedJobRun(SQLModel, table=True):
     )
     dashboard_status: str = Field(index=True)
     run_completed: bool = Field(default=False, index=True)
+    latest_eligible: bool = Field(default=True, index=True)
     planned_assets: list[list[str]] = Field(
         default_factory=list,
         sa_column=Column(JSON, nullable=False),

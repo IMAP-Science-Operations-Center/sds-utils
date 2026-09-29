@@ -52,8 +52,12 @@ class FakeDetailsClient:
 
     @staticmethod
     def _events(run_id: str) -> list[dict[str, object]]:
-        if run_id in {"planned-only-run", "planned-overrides-selection-run"}:
-            return [
+        if run_id in {
+            "planned-only-run",
+            "planned-overrides-selection-run",
+            "latest-ineligible-run",
+        }:
+            events: list[dict[str, object]] = [
                 {
                     "__typename": "AssetMaterializationPlannedEvent",
                     "runId": run_id,
@@ -62,11 +66,26 @@ class FakeDetailsClient:
                     "assetKey": {"path": ["planned-asset"]},
                 }
             ]
+            if run_id == "latest-ineligible-run":
+                events.append(
+                    {
+                        "__typename": "LogMessageEvent",
+                        "runId": run_id,
+                        "stepKey": "step-planned-asset",
+                        "timestamp": "1788307200000",
+                        "message": (
+                            "Submit response: skipped\n"
+                            "  - Job already completed or in progress.,\n"
+                            "  {'status': 'INPROGRESS'}"
+                        ),
+                    }
+                )
+            return events
         if run_id in {"materialized-run", "partial-run"}:
             assets = (
                 ("asset-a", "asset-b") if run_id == "materialized-run" else ("asset-a",)
             )
-            return [
+            events = [
                 {
                     "__typename": "MaterializationEvent",
                     "runId": run_id,
@@ -78,6 +97,21 @@ class FakeDetailsClient:
                 }
                 for asset in assets
             ]
+            if run_id == "materialized-run":
+                events.append(
+                    {
+                        "__typename": "LogMessageEvent",
+                        "runId": run_id,
+                        "stepKey": "step-asset-a",
+                        "timestamp": "1788307199000",
+                        "message": (
+                            "Submit response: submitted\n"
+                            "  - Job submitted successfully.,\n"
+                            "  {'status': 'INPROGRESS'}"
+                        ),
+                    }
+                )
+            return events
         if run_id == "legacy-skipped-run":
             return [
                 {
@@ -163,6 +197,7 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
         planned_overrides_selection_run = _cached_run(
             namespace.id, "planned-overrides-selection-run"
         )
+        latest_ineligible_run = _cached_run(namespace.id, "latest-ineligible-run")
         failed_run = _cached_run(namespace.id, "failed-run", status="FAILURE")
         active_run = _cached_run(namespace.id, "active-run", status="STARTED")
         previously_derived_run = _cached_run(namespace.id, "already-derived-run")
@@ -175,6 +210,7 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
                 different_skip_info_run,
                 planned_only_run,
                 planned_overrides_selection_run,
+                latest_ineligible_run,
                 failed_run,
                 active_run,
                 previously_derived_run,
@@ -199,7 +235,7 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
         )
     )
 
-    assert processed == 9
+    assert processed == 10
     assert len(client.requested_run_ids) == 1
     assert set(client.requested_run_ids[0]) == {
         "materialized-run",
@@ -209,6 +245,7 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
         "different-skip-info-run",
         "planned-only-run",
         "planned-overrides-selection-run",
+        "latest-ineligible-run",
         "failed-run",
         "active-run",
     }
@@ -273,6 +310,28 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
     assert planned_override.n_expected == 1
     assert planned_override.n_missing == 1
 
+    latest_ineligible = derived_runs[cached_runs["latest-ineligible-run"].id]
+    assert latest_ineligible.dashboard_status == "missing"
+    assert latest_ineligible.n_skipped == 0
+    assert latest_ineligible.n_missing == 1
+    assert latest_ineligible.latest_eligible is False
+    submission_events = [
+        event
+        for event in events
+        if event.run_id == "latest-ineligible-run"
+        and event.event_type == "LogMessageEvent"
+    ]
+    assert len(submission_events) == 1
+    assert submission_events[0].payload["message"].startswith(
+        "Submit response: skipped"
+    )
+    assert any(
+        event.run_id == "materialized-run"
+        and event.event_type == "LogMessageEvent"
+        and event.payload["message"].startswith("Submit response: submitted")
+        for event in events
+    )
+
     failed = derived_runs[cached_runs["failed-run"].id]
     assert failed.dashboard_status == "failed"
     assert failed.run_completed is True
@@ -298,7 +357,7 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
             derived.n_materialized + derived.n_skipped + derived.n_missing
         )
 
-    assert len(events) == 14
+    assert len(events) == 17
     planned_event = next(
         event
         for event in events
@@ -338,4 +397,4 @@ def test_ingest_run_details_derives_successful_runs_and_caches_events() -> None:
     assert processed_again == 1
     assert client.requested_run_ids[-1] == ["active-run"]
     with Session(db_engine) as session:
-        assert len(session.exec(select(CachedRunEvent)).all()) == 14
+        assert len(session.exec(select(CachedRunEvent)).all()) == 17

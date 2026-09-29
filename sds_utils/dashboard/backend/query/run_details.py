@@ -30,6 +30,7 @@ from .graphql_api.fragments import (
     ObservationEventDetails,
     ObservationEventDetailsMetadataEntriesTextMetadataEntry,
     PlannedMaterializationEventDetails,
+    SubmissionResponseLogEventDetails,
 )
 
 DEFAULT_BATCH_SIZE = 25
@@ -39,6 +40,7 @@ RELEVANT_EVENT_TYPES = (
     "AssetMaterializationPlannedEvent",
     "MaterializationEvent",
     "ObservationEvent",
+    "LogMessageEvent",
 )
 LEGACY_SKIP_EVENT_TYPE = "ExecutionStepSkippedEvent"
 _TERMINAL_STATUSES = {"SUCCESS", "FAILURE", "CANCELED"}
@@ -69,6 +71,21 @@ class _RelevantEvent:
     metadata: dict[str, str]
     payload: dict[str, object]
     skip_reason: str | None
+    submission_response: tuple[str, str] | None
+
+
+def _submission_response(message: str) -> tuple[str, str] | None:
+    """Parse the disposition and reason from a submission-response log."""
+    lines = [line.strip() for line in message.splitlines() if line.strip()]
+    prefix = "Submit response:"
+    match lines:
+        case [response_line, reason_line, *_] if response_line.startswith(prefix):
+            pass
+        case _:
+            return None
+    disposition = response_line.removeprefix(prefix).strip()
+    reason = reason_line.removeprefix("-").strip().removesuffix(",")
+    return disposition, reason
 
 
 def _event_timestamp(value: str) -> datetime.datetime:
@@ -84,7 +101,8 @@ def _normalize_event(
     event: LegacySkipEventDetails
     | PlannedMaterializationEventDetails
     | MaterializationEventDetails
-    | ObservationEventDetails,
+    | ObservationEventDetails
+    | SubmissionResponseLogEventDetails,
 ) -> _RelevantEvent:
     if isinstance(event, PlannedMaterializationEventDetails):
         event_type = "AssetMaterializationPlannedEvent"
@@ -94,12 +112,14 @@ def _normalize_event(
         partition = None
         metadata = {}
         skip_reason = None
+        submission_response = None
     elif isinstance(event, LegacySkipEventDetails):
         event_type = LEGACY_SKIP_EVENT_TYPE
         asset_path = None
         partition = None
         skip_reason = event.message
         metadata = {"skip_reason": skip_reason}
+        submission_response = None
     elif isinstance(event, MaterializationEventDetails):
         event_type = "MaterializationEvent"
         asset_path = (
@@ -115,6 +135,7 @@ def _normalize_event(
             )
         }
         skip_reason = None
+        submission_response = None
     elif isinstance(event, ObservationEventDetails):
         event_type = "ObservationEvent"
         asset_path = (
@@ -134,6 +155,16 @@ def _normalize_event(
             "",
         )
         skip_reason = status if status.casefold().startswith("skipped") else None
+        submission_response = None
+    elif isinstance(event, SubmissionResponseLogEventDetails):
+        event_type = "LogMessageEvent"
+        asset_path = None
+        partition = None
+        metadata = {}
+        skip_reason = None
+        submission_response = _submission_response(event.message)
+        if submission_response is None:
+            raise ValueError("Not a submission-response log event")
     else:
         raise NotImplementedError(type(event))
     payload = event.model_dump(mode="json", by_alias=True)
@@ -150,13 +181,16 @@ def _normalize_event(
         metadata=metadata,
         payload=payload,
         skip_reason=skip_reason,
+        submission_response=submission_response,
     )
 
 
 def _normalize_events(events: Sequence[BaseModel]) -> list[_RelevantEvent]:
-    return [
-        _normalize_event(event)
-        for event in events
+    normalized: list[_RelevantEvent] = []
+    for event in events:
+        if isinstance(event, SubmissionResponseLogEventDetails):
+            if _submission_response(event.message) is None:
+                continue
         if isinstance(
             event,
             (
@@ -164,9 +198,23 @@ def _normalize_events(events: Sequence[BaseModel]) -> list[_RelevantEvent]:
                 PlannedMaterializationEventDetails,
                 MaterializationEventDetails,
                 ObservationEventDetails,
+                SubmissionResponseLogEventDetails,
             ),
-        )
-    ]
+        ):
+            normalized.append(_normalize_event(event))
+    return normalized
+
+
+def _latest_eligible(
+    events: list[_RelevantEvent],
+    *,
+    n_materialized: int,
+) -> bool:
+    responses = [event for event in events if event.submission_response is not None]
+    if not responses or n_materialized > 0:
+        return True
+    latest = max(responses, key=lambda event: event.timestamp).submission_response
+    return latest != ("skipped", "Job already completed or in progress.")
 
 
 def _graphql_error(response: object) -> RunDetailsError:
@@ -378,6 +426,7 @@ def _derive_run(
         cached_run_id=cached_run.id,
         dashboard_status=dashboard_status,
         run_completed=cached_run.dagster_status in _TERMINAL_STATUSES,
+        latest_eligible=_latest_eligible(events, n_materialized=n_materialized),
         planned_assets=_asset_paths_json(planned_assets),
         expected_assets=_asset_paths_json(expected_assets),
         n_expected=n_expected,
@@ -429,6 +478,7 @@ def _store_details_batch(
         else:
             existing_derived.dashboard_status = derived.dashboard_status
             existing_derived.run_completed = derived.run_completed
+            existing_derived.latest_eligible = derived.latest_eligible
             existing_derived.planned_assets = derived.planned_assets
             existing_derived.expected_assets = derived.expected_assets
             existing_derived.n_expected = derived.n_expected

@@ -128,6 +128,64 @@ def test_query_builds_synthetic_l0_rows_from_asset_materializations() -> None:
     assert row["source_kind"] == "l0_asset_materialization"
 
 
+def test_latest_query_ignores_latest_ineligible_runs() -> None:
+    db_engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(db_engine)
+    with Session(db_engine) as session:
+        namespace = DagsterCacheNamespace(
+            name="default",
+            graphql_url="https://dagster.example/graphql",
+        )
+        session.add(namespace)
+        session.flush()
+        assert namespace.id is not None
+        eligible = _run(
+            namespace.id,
+            "eligible",
+            "SUCCESS",
+            datetime.datetime(2026, 9, 10, 12),
+        )
+        ineligible = _run(
+            namespace.id,
+            "ineligible",
+            "SUCCESS",
+            datetime.datetime(2026, 9, 10, 13),
+        )
+        session.add_all([eligible, ineligible])
+        session.flush()
+        assert eligible.id is not None
+        assert ineligible.id is not None
+        session.add_all(
+            [
+                DerivedJobRun(
+                    cached_run_id=eligible.id,
+                    dashboard_status="materialized",
+                    latest_eligible=True,
+                ),
+                DerivedJobRun(
+                    cached_run_id=ineligible.id,
+                    dashboard_status="missing",
+                    latest_eligible=False,
+                ),
+            ]
+        )
+        session.commit()
+
+    data_df = DBDataSource(db_engine, "default").query(
+        QuerySpec(
+            start_time=datetime.datetime(2026, 9, 10, tzinfo=datetime.UTC),
+            end_time=datetime.datetime(2026, 9, 11, tzinfo=datetime.UTC),
+            version_mode="latest",
+        )
+    )
+
+    assert data_df["run_id"].tolist() == ["eligible"]
+
+
 def test_query_builds_dashboard_dataframe_from_relevant_runs(
 ) -> None:
     db_engine = create_engine(

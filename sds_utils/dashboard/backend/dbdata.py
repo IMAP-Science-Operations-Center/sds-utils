@@ -5,7 +5,7 @@ import logging
 import re
 
 import pandas as pd
-from sqlalchemy import Engine, func
+from sqlalchemy import Engine, func, or_
 from sqlmodel import Session, col, select
 
 from .data import DataSourceBase, QuerySpec
@@ -74,6 +74,7 @@ _COLUMNS = (
     "planned_assets",
     "expected_assets",
     "source_kind",
+    "latest_eligible",
     "tags",
     *_COUNT_COLUMNS,
     "skip_info",
@@ -205,7 +206,17 @@ class DBDataSource(DataSourceBase):
                     DagsterCacheNamespace,
                     col(CachedDagsterRun.namespace_id) == DagsterCacheNamespace.id,
                 )
-                .where(DagsterCacheNamespace.name == self.namespace)
+                .outerjoin(
+                    DerivedJobRun,
+                    col(DerivedJobRun.cached_run_id) == CachedDagsterRun.id,
+                )
+                .where(
+                    DagsterCacheNamespace.name == self.namespace,
+                    or_(
+                        col(DerivedJobRun.id).is_(None),
+                        col(DerivedJobRun.latest_eligible).is_(True),
+                    ),
+                )
             )
             if query.date_mode == "update_time":
                 ranked_runs = ranked_runs.where(
@@ -274,6 +285,9 @@ class DBDataSource(DataSourceBase):
                         derived.expected_assets if derived is not None else []
                     ),
                     "source_kind": "dagster_run",
+                    "latest_eligible": (
+                        derived.latest_eligible if derived is not None else True
+                    ),
                     "tags": run.tags,
                     "start_date": None,
                     "end_date": None,
@@ -385,6 +399,7 @@ class DBDataSource(DataSourceBase):
                     "planned_assets": [],
                     "expected_assets": [[materialization.asset_key]],
                     "source_kind": "l0_asset_materialization",
+                    "latest_eligible": True,
                     "tags": {},
                     "start_date": None,
                     "end_date": None,
