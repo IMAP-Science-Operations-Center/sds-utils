@@ -6,14 +6,13 @@ import datetime
 import math
 import os
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
 
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, col, select
 from tqdm.auto import tqdm
 
 from ..db import create_db_and_tables, engine
-from ..db.models import CachedDagsterRun, DagsterCacheNamespace
+from ..db.models import CachedDagsterRun, CacheIngestionState, DagsterCacheNamespace
 from ..jobkey import derive_job_key
 from ..partitions import parse_partition
 from .graphql_api import DagsterGraphQLClient, RunsFilter
@@ -26,102 +25,41 @@ from .graphql_api.runs_for_ingestion import (
     RunsForIngestionRunsOrErrorRuns,
     RunsForIngestionRunsOrErrorRunsResults,
 )
+from .ingestionbase import (
+    IngestionRange,
+    as_utc,
+    get_or_create_ingestion_state,
+    plan_ingestion_ranges,
+)
 from .l0_ingestion import ingest_l0_materializations
 
 DAGSTER_PARTITION_TAG = "dagster/partition"
 DEFAULT_PAGE_SIZE = 100
 DEFAULT_OVERLAP_BUFFER = datetime.timedelta(minutes=5)
+RUN_INGESTION_STREAM = "runs"
 
 
 class RunIngestionError(RuntimeError):
     """Indicate that Dagster runs could not be ingested safely."""
 
 
-@dataclass(frozen=True)
-class _IngestionRange:
-    start: datetime.datetime
-    end: datetime.datetime
-
-
-def _as_utc(value: datetime.datetime | None) -> datetime.datetime | None:
-    if value is None:
-        return None
-    if value.tzinfo is None or value.utcoffset() is None:
-        msg = "Run-ingestion watermarks must be timezone-aware"
-        raise ValueError(msg)
-    return value.astimezone(datetime.UTC)
-
-
-def _database_datetime_as_utc(
-    value: datetime.datetime | None,
-) -> datetime.datetime | None:
-    """Restore UTC lost when SQLite reads a timezone-aware datetime."""
-    if value is None:
-        return None
-    if value.tzinfo is None or value.utcoffset() is None:
-        return value.replace(tzinfo=datetime.UTC)
-    return value.astimezone(datetime.UTC)
-
-
 def _plan_ingestion_ranges(
-    namespace: DagsterCacheNamespace,
+    state: CacheIngestionState,
     *,
     requested_start: datetime.datetime | None,
     requested_end: datetime.datetime | None,
     overlap_buffer: datetime.timedelta,
     now: datetime.datetime | None = None,
-) -> tuple[list[_IngestionRange], datetime.datetime, datetime.datetime]:
-    current_start = _database_datetime_as_utc(namespace.run_update_watermark_start)
-    current_end = _database_datetime_as_utc(namespace.run_update_watermark_end)
-
-    if now is None:
-        now = datetime.datetime.now(datetime.UTC)
-    if requested_end is not None:
-        requested_end = min(requested_end, now)
-
-    if current_start is None and current_end is None:
-        if requested_start is None or requested_end is None:
-            msg = "Both watermarks are required to initialize a cache namespace"
-            raise RunIngestionError(msg)
-        return (
-            [_IngestionRange(requested_start, requested_end)],
-            requested_start,
-            requested_end,
-        )
-    if current_start is None or current_end is None:
-        msg = "Cache namespace has only one run-update watermark"
-        raise RunIngestionError(msg)
-
-    desired_start = requested_start or current_start
-    desired_end = requested_end or current_end
-    if desired_end < current_start or desired_start > current_end:
-        msg = (
-            "Requested run-update range does not overlap the cache namespace's "
-            "existing range"
-        )
-        raise RunIngestionError(msg)
-
-    ranges: list[_IngestionRange] = []
-    new_start = current_start
-    new_end = current_end
-    if desired_start < current_start:
-        ranges.append(
-            _IngestionRange(
-                desired_start,
-                min(current_start + overlap_buffer, current_end),
-            )
-        )
-        new_start = desired_start
-    if desired_end > current_end:
-        ranges.append(
-            _IngestionRange(
-                max(current_end - overlap_buffer, current_start),
-                desired_end,
-            )
-        )
-        new_end = desired_end
-
-    return ranges, new_start, new_end
+) -> tuple[list[IngestionRange], datetime.datetime, datetime.datetime]:
+    return plan_ingestion_ranges(
+        state,
+        requested_start=requested_start,
+        requested_end=requested_end,
+        overlap_buffer=overlap_buffer,
+        error_type=RunIngestionError,
+        stream_label="run ingestion",
+        now=now,
+    )
 
 
 def _inclusive_after(value: datetime.datetime | None) -> float | None:
@@ -144,7 +82,7 @@ def _timestamp(value: float | None) -> datetime.datetime | None:
 
 async def _count_runs(
     client: DagsterGraphQLClient,
-    ingestion_range: _IngestionRange,
+    ingestion_range: IngestionRange,
 ) -> int:
     response = (
         await client.run_count(
@@ -311,8 +249,8 @@ async def ingest_runs(  # noqa: PLR0912, PLR0913
     int
         Number of runs returned by Dagster and cached.
     """
-    start_datetime = _as_utc(start_datetime)
-    end_datetime = _as_utc(end_datetime)
+    start_datetime = as_utc(start_datetime, label="Run-ingestion")
+    end_datetime = as_utc(end_datetime, label="Run-ingestion")
     if (
         start_datetime is not None
         and end_datetime is not None
@@ -351,9 +289,14 @@ async def ingest_runs(  # noqa: PLR0912, PLR0913
             if namespace.id is None:
                 msg = "Cached Dagster namespace has no database ID"
                 raise RunIngestionError(msg)
+            state = get_or_create_ingestion_state(
+                session,
+                namespace_id=namespace.id,
+                stream=RUN_INGESTION_STREAM,
+            )
 
             ranges, new_start, new_end = _plan_ingestion_ranges(
-                namespace,
+                state,
                 requested_start=start_datetime,
                 requested_end=end_datetime,
                 overlap_buffer=overlap_buffer,
@@ -385,10 +328,10 @@ async def ingest_runs(  # noqa: PLR0912, PLR0913
                     if progress is not None:
                         progress.update(len(runs))
 
-            namespace.run_update_watermark_start = new_start
-            namespace.run_update_watermark_end = new_end
-            namespace.updated_at = datetime.datetime.now(datetime.UTC)
-            session.add(namespace)
+            state.watermark_start = new_start
+            state.watermark_end = new_end
+            state.updated_at = datetime.datetime.now(datetime.UTC)
+            session.add(state)
             session.commit()
     finally:
         if progress is not None:

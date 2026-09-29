@@ -9,6 +9,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 import pytest
 
 from sds_utils.dashboard.backend.db.models import (
+    CacheIngestionState,
     CachedDagsterRun,
     DagsterCacheNamespace,
 )
@@ -21,6 +22,7 @@ from sds_utils.dashboard.backend.query.graphql_api.runs_for_ingestion import (
 )
 from sds_utils.dashboard.backend.query.graphql_api.run_count import RunCount
 from sds_utils.dashboard.backend.query.run_ingestion import (
+    RUN_INGESTION_STREAM,
     RunIngestionError,
     _plan_ingestion_ranges,
     ingest_runs,
@@ -124,11 +126,12 @@ def test_ingest_runs_pages_upserts_and_sets_watermarks() -> None:
     assert len(client.count_filters) == 1
     assert client.cursors == [None, "run-2", "run-1"]
     with Session(db_engine) as session:
-        namespace = session.exec(select(DagsterCacheNamespace)).one()
+        state = session.exec(select(CacheIngestionState)).one()
         runs = session.exec(select(CachedDagsterRun)).all()
 
-    assert namespace.run_update_watermark_start == start.replace(tzinfo=None)
-    assert namespace.run_update_watermark_end == end.replace(tzinfo=None)
+    assert state.stream == RUN_INGESTION_STREAM
+    assert state.watermark_start == start.replace(tzinfo=None)
+    assert state.watermark_end == end.replace(tzinfo=None)
     assert {run.run_id for run in runs} == {"run-1", "run-2"}
     assert all(run.partition_start_time == datetime.datetime(2026, 9, 19) for run in runs)
     assert all(run.partition_end_time == datetime.datetime(2026, 9, 20) for run in runs)
@@ -149,12 +152,19 @@ def test_ingest_runs_extends_both_sides_without_querying_cached_middle() -> None
     current_start = datetime.datetime(2026, 8, 10, tzinfo=datetime.UTC)
     current_end = datetime.datetime(2026, 8, 20, tzinfo=datetime.UTC)
     with Session(db_engine) as session:
+        namespace = DagsterCacheNamespace(
+            name="default",
+            graphql_url="https://dagster.example/graphql",
+        )
+        session.add(namespace)
+        session.flush()
+        assert namespace.id is not None
         session.add(
-            DagsterCacheNamespace(
-                name="default",
-                graphql_url="https://dagster.example/graphql",
-                run_update_watermark_start=current_start,
-                run_update_watermark_end=current_end,
+            CacheIngestionState(
+                namespace_id=namespace.id,
+                stream=RUN_INGESTION_STREAM,
+                watermark_start=current_start,
+                watermark_end=current_end,
             )
         )
         session.commit()
@@ -182,9 +192,9 @@ def test_ingest_runs_extends_both_sides_without_querying_cached_middle() -> None
     assert second_filter.updated_after < (current_end - buffer).timestamp()
     assert second_filter.updated_before > requested_end.timestamp()
     with Session(db_engine) as session:
-        namespace = session.exec(select(DagsterCacheNamespace)).one()
-    assert namespace.run_update_watermark_start == requested_start.replace(tzinfo=None)
-    assert namespace.run_update_watermark_end == requested_end.replace(tzinfo=None)
+        state = session.exec(select(CacheIngestionState)).one()
+    assert state.watermark_start == requested_start.replace(tzinfo=None)
+    assert state.watermark_end == requested_end.replace(tzinfo=None)
 
 
 def test_ingest_runs_can_extend_only_start() -> None:
@@ -197,12 +207,19 @@ def test_ingest_runs_can_extend_only_start() -> None:
     current_start = datetime.datetime(2026, 8, 10, tzinfo=datetime.UTC)
     current_end = datetime.datetime(2026, 8, 20, tzinfo=datetime.UTC)
     with Session(db_engine) as session:
+        namespace = DagsterCacheNamespace(
+            name="default",
+            graphql_url="https://dagster.example/graphql",
+        )
+        session.add(namespace)
+        session.flush()
+        assert namespace.id is not None
         session.add(
-            DagsterCacheNamespace(
-                name="default",
-                graphql_url="https://dagster.example/graphql",
-                run_update_watermark_start=current_start,
-                run_update_watermark_end=current_end,
+            CacheIngestionState(
+                namespace_id=namespace.id,
+                stream=RUN_INGESTION_STREAM,
+                watermark_start=current_start,
+                watermark_end=current_end,
             )
         )
         session.commit()
@@ -221,9 +238,9 @@ def test_ingest_runs_can_extend_only_start() -> None:
 
     assert len(client.filters) == 1
     with Session(db_engine) as session:
-        namespace = session.exec(select(DagsterCacheNamespace)).one()
-    assert namespace.run_update_watermark_start == requested_start.replace(tzinfo=None)
-    assert namespace.run_update_watermark_end == current_end.replace(tzinfo=None)
+        state = session.exec(select(CacheIngestionState)).one()
+    assert state.watermark_start == requested_start.replace(tzinfo=None)
+    assert state.watermark_end == current_end.replace(tzinfo=None)
 
 
 def test_ingest_runs_rejects_disjoint_range() -> None:
@@ -234,12 +251,19 @@ def test_ingest_runs_rejects_disjoint_range() -> None:
     )
     SQLModel.metadata.create_all(db_engine)
     with Session(db_engine) as session:
+        namespace = DagsterCacheNamespace(
+            name="default",
+            graphql_url="https://dagster.example/graphql",
+        )
+        session.add(namespace)
+        session.flush()
+        assert namespace.id is not None
         session.add(
-            DagsterCacheNamespace(
-                name="default",
-                graphql_url="https://dagster.example/graphql",
-                run_update_watermark_start=datetime.datetime(2026, 8, 10),
-                run_update_watermark_end=datetime.datetime(2026, 8, 20),
+            CacheIngestionState(
+                namespace_id=namespace.id,
+                stream=RUN_INGESTION_STREAM,
+                watermark_start=datetime.datetime(2026, 8, 10),
+                watermark_end=datetime.datetime(2026, 8, 20),
             )
         )
         session.commit()
@@ -263,15 +287,15 @@ def test_plan_ingestion_ranges_limits_end_watermark_to_now() -> None:
     current_start = datetime.datetime(2026, 8, 10, tzinfo=datetime.UTC)
     current_end = datetime.datetime(2026, 8, 20, tzinfo=datetime.UTC)
     now = datetime.datetime(2026, 8, 25, tzinfo=datetime.UTC)
-    namespace = DagsterCacheNamespace(
-        name="default",
-        graphql_url="https://dagster.example/graphql",
-        run_update_watermark_start=current_start,
-        run_update_watermark_end=current_end,
+    state = CacheIngestionState(
+        namespace_id=1,
+        stream=RUN_INGESTION_STREAM,
+        watermark_start=current_start,
+        watermark_end=current_end,
     )
 
     ranges, new_start, new_end = _plan_ingestion_ranges(
-        namespace,
+        state,
         requested_start=None,
         requested_end=datetime.datetime(2026, 9, 1, tzinfo=datetime.UTC),
         overlap_buffer=datetime.timedelta(minutes=5),

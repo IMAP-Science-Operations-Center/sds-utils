@@ -46,8 +46,6 @@ class DagsterCacheNamespace(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(index=True, unique=True)
     graphql_url: str
-    run_update_watermark_start: datetime.datetime | None = None
-    run_update_watermark_end: datetime.datetime | None = None
     created_at: datetime.datetime = Field(default_factory=_utc_now)
     updated_at: datetime.datetime = Field(default_factory=_utc_now)
 

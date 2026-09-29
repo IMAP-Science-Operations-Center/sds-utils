@@ -6,7 +6,6 @@ import datetime
 import logging
 import os
 from collections.abc import AsyncIterator, Collection
-from dataclasses import dataclass
 
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, col, select
@@ -26,6 +25,12 @@ from .graphql_api.l_0_materializations import (
     L0MaterializationsAssetNodeOrErrorAssetNode,
     L0MaterializationsAssetNodeOrErrorAssetNodeAssetMaterializations,
 )
+from .ingestionbase import (
+    IngestionRange,
+    as_utc,
+    get_or_create_ingestion_state,
+    plan_ingestion_ranges,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,86 +41,6 @@ L0_INGESTION_STREAM = "l0_materializations"
 
 class L0IngestionError(RuntimeError):
     """Indicate that L0 materializations could not be ingested safely."""
-
-
-@dataclass(frozen=True)
-class _IngestionRange:
-    start: datetime.datetime
-    end: datetime.datetime
-
-
-def _as_utc(value: datetime.datetime | None) -> datetime.datetime | None:
-    if value is None:
-        return None
-    if value.tzinfo is None or value.utcoffset() is None:
-        raise ValueError("L0-ingestion watermarks must be timezone-aware")
-    return value.astimezone(datetime.UTC)
-
-
-def _database_datetime_as_utc(
-    value: datetime.datetime | None,
-) -> datetime.datetime | None:
-    if value is None:
-        return None
-    if value.tzinfo is None or value.utcoffset() is None:
-        return value.replace(tzinfo=datetime.UTC)
-    return value.astimezone(datetime.UTC)
-
-
-def _plan_ingestion_ranges(
-    state: CacheIngestionState,
-    *,
-    requested_start: datetime.datetime | None,
-    requested_end: datetime.datetime | None,
-    overlap_buffer: datetime.timedelta,
-    now: datetime.datetime | None = None,
-) -> tuple[list[_IngestionRange], datetime.datetime, datetime.datetime]:
-    current_start = _database_datetime_as_utc(state.watermark_start)
-    current_end = _database_datetime_as_utc(state.watermark_end)
-    now = now or datetime.datetime.now(datetime.UTC)
-    if requested_end is not None:
-        requested_end = min(requested_end, now)
-
-    if current_start is None and current_end is None:
-        if requested_start is None or requested_end is None:
-            raise L0IngestionError(
-                "Both watermarks are required to initialize L0 ingestion"
-            )
-        return (
-            [_IngestionRange(requested_start, requested_end)],
-            requested_start,
-            requested_end,
-        )
-    if current_start is None or current_end is None:
-        raise L0IngestionError("L0 ingestion has only one watermark")
-
-    desired_start = requested_start or current_start
-    desired_end = requested_end or current_end
-    if desired_end < current_start or desired_start > current_end:
-        raise L0IngestionError(
-            "Requested L0 range does not overlap the existing cached range"
-        )
-
-    ranges: list[_IngestionRange] = []
-    new_start = current_start
-    new_end = current_end
-    if desired_start < current_start:
-        ranges.append(
-            _IngestionRange(
-                desired_start,
-                min(current_start + overlap_buffer, current_end),
-            )
-        )
-        new_start = desired_start
-    if desired_end > current_end:
-        ranges.append(
-            _IngestionRange(
-                max(current_end - overlap_buffer, current_start),
-                desired_end,
-            )
-        )
-        new_end = desired_end
-    return ranges, new_start, new_end
 
 
 def _event_datetime(timestamp: str) -> datetime.datetime:
@@ -132,7 +57,7 @@ async def _iter_materializations(
     client: DagsterGraphQLClient,
     *,
     asset_key: str,
-    ingestion_range: _IngestionRange,
+    ingestion_range: IngestionRange,
     page_size: int,
 ) -> AsyncIterator[
     list[L0MaterializationsAssetNodeOrErrorAssetNodeAssetMaterializations]
@@ -288,8 +213,8 @@ async def ingest_l0_materializations(  # noqa: PLR0913
     client: DagsterGraphQLClient | None = None,
 ) -> int:
     """Extend the cached L0-materialization event-time range."""
-    start_datetime = _as_utc(start_datetime)
-    end_datetime = _as_utc(end_datetime)
+    start_datetime = as_utc(start_datetime, label="L0-ingestion")
+    end_datetime = as_utc(end_datetime, label="L0-ingestion")
     if (
         start_datetime is not None
         and end_datetime is not None
@@ -313,25 +238,18 @@ async def ingest_l0_materializations(  # noqa: PLR0913
             raise L0IngestionError(f"Cache namespace {namespace_name!r} does not exist")
         namespace_id = namespace.id
         graphql_url = namespace.graphql_url
-        state = session.exec(
-            select(CacheIngestionState).where(
-                CacheIngestionState.namespace_id == namespace_id,
-                CacheIngestionState.stream == L0_INGESTION_STREAM,
-            )
-        ).one_or_none()
-        if state is None:
-            state = CacheIngestionState(
-                namespace_id=namespace_id,
-                stream=L0_INGESTION_STREAM,
-            )
-            session.add(state)
-            session.commit()
-            session.refresh(state)
-        ranges, new_start, new_end = _plan_ingestion_ranges(
+        state = get_or_create_ingestion_state(
+            session,
+            namespace_id=namespace_id,
+            stream=L0_INGESTION_STREAM,
+        )
+        ranges, new_start, new_end = plan_ingestion_ranges(
             state,
             requested_start=start_datetime,
             requested_end=end_datetime,
             overlap_buffer=overlap_buffer,
+            error_type=L0IngestionError,
+            stream_label="L0 ingestion",
         )
         selected_instruments = set(
             instruments or _known_instruments(session, namespace_id)
