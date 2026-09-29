@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import datetime
 import logging
+import math
 import os
 from collections.abc import AsyncIterator, Collection
 
@@ -53,6 +54,14 @@ def _before_timestamp(value: datetime.datetime) -> str:
     return str(int(value.timestamp() * 1000) + 1)
 
 
+def _before_events(
+    events: list[L0MaterializationsAssetNodeOrErrorAssetNodeAssetMaterializations],
+) -> str:
+    """Return an integer-millisecond boundary strictly before every event."""
+    oldest = min(float(event.timestamp) for event in events)
+    return str(math.ceil(oldest) - 1)
+
+
 async def _iter_materializations(
     client: DagsterGraphQLClient,
     *,
@@ -92,7 +101,7 @@ async def _iter_materializations(
         oldest = min(_event_datetime(event.timestamp) for event in events)
         if oldest <= ingestion_range.start or len(events) < page_size:
             return
-        next_bound = str(min(float(event.timestamp) for event in events))
+        next_bound = _before_events(events)
         if next_bound in seen_bounds:
             raise L0IngestionError(
                 f"Dagster returned a repeated materialization page for {asset_key}"

@@ -18,6 +18,7 @@ from sds_utils.dashboard.backend.query.graphql_api.l_0_materializations import (
 )
 from sds_utils.dashboard.backend.query.l0_ingestion import (
     L0_INGESTION_STREAM,
+    _before_events,
     ingest_l0_materializations,
 )
 
@@ -66,6 +67,15 @@ def _response() -> L0Materializations:
                 ],
             }
         }
+    )
+
+
+def test_next_page_boundary_is_strictly_before_oldest_event() -> None:
+    response = _response().asset_node_or_error
+    events = response.asset_materializations  # type: ignore[union-attr]
+
+    assert float(_before_events(events)) < min(
+        float(event.timestamp) for event in events
     )
 
 
