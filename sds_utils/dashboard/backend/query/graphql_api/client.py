@@ -118,6 +118,9 @@ class DagsterGraphQLClient(AsyncBaseClient):
                         ... on ObservationEvent {
                           ...ObservationEventDetails
                         }
+                        ... on LogMessageEvent {
+                          ...SubmissionResponseLogEventDetails
+                        }
                       }
                       cursor
                       hasMore
@@ -183,6 +186,13 @@ class DagsterGraphQLClient(AsyncBaseClient):
                 path
               }
             }
+
+            fragment SubmissionResponseLogEventDetails on LogMessageEvent {
+              runId
+              stepKey
+              timestamp
+              message
+            }
             """)
         variables: dict[str, object] = {"runIds": run_ids, "eventLimit": event_limit}
         response = await self.execute(
@@ -217,6 +227,9 @@ class DagsterGraphQLClient(AsyncBaseClient):
                       }
                       ... on ObservationEvent {
                         ...ObservationEventDetails
+                      }
+                      ... on LogMessageEvent {
+                        ...SubmissionResponseLogEventDetails
                       }
                     }
                     cursor
@@ -281,6 +294,13 @@ class DagsterGraphQLClient(AsyncBaseClient):
               assetKey {
                 path
               }
+            }
+
+            fragment SubmissionResponseLogEventDetails on LogMessageEvent {
+              runId
+              stepKey
+              timestamp
+              message
             }
             """)
         variables: dict[str, object] = {

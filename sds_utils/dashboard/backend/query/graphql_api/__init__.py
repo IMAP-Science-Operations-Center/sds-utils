@@ -23,6 +23,7 @@ from .fragments import (
     ObservationEventDetailsMetadataEntriesTextMetadataEntry,
     PlannedMaterializationEventDetails,
     PlannedMaterializationEventDetailsAssetKey,
+    SubmissionResponseLogEventDetails,
 )
 from .input_types import AssetKeyInput, ExecutionTag, RunsFilter
 from .l_0_materializations import (
@@ -282,5 +283,6 @@ __all__ = [
     "RunsForIngestionRunsOrErrorRunsResults",
     "RunsForIngestionRunsOrErrorRunsResultsAssetSelection",
     "RunsForIngestionRunsOrErrorRunsResultsTags",
+    "SubmissionResponseLogEventDetails",
     "Upload",
 ]

@@ -5,6 +5,13 @@ fragment LegacySkipEventDetails on ExecutionStepSkippedEvent {
   message
 }
 
+fragment SubmissionResponseLogEventDetails on LogMessageEvent {
+  runId
+  stepKey
+  timestamp
+  message
+}
+
 fragment PlannedMaterializationEventDetails on AssetMaterializationPlannedEvent {
   runId
   stepKey
@@ -69,6 +76,9 @@ query RunDetails($runIds: [String!], $eventLimit: Int!) {
             ... on ObservationEvent {
               ...ObservationEventDetails
             }
+            ... on LogMessageEvent {
+              ...SubmissionResponseLogEventDetails
+            }
           }
           cursor
           hasMore
@@ -103,6 +113,9 @@ query RunDetailsPage($runId: ID!, $cursor: String, $eventLimit: Int!) {
           }
           ... on ObservationEvent {
             ...ObservationEventDetails
+          }
+          ... on LogMessageEvent {
+            ...SubmissionResponseLogEventDetails
           }
         }
         cursor

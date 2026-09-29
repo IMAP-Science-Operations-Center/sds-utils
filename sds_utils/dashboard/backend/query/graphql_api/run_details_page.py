@@ -11,6 +11,7 @@ from .fragments import (
     MaterializationEventDetails,
     ObservationEventDetails,
     PlannedMaterializationEventDetails,
+    SubmissionResponseLogEventDetails,
 )
 
 
@@ -134,7 +135,9 @@ class RunDetailsPageRunOrErrorRunEventConnectionEventsHealthChangedEvent(BaseMod
     typename__: Literal["HealthChangedEvent"] = Field(alias="__typename")
 
 
-class RunDetailsPageRunOrErrorRunEventConnectionEventsLogMessageEvent(BaseModel):
+class RunDetailsPageRunOrErrorRunEventConnectionEventsLogMessageEvent(
+    SubmissionResponseLogEventDetails
+):
     typename__: Literal["LogMessageEvent"] = Field(alias="__typename")
 
 

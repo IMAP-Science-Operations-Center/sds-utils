@@ -134,7 +134,15 @@ class PlannedMaterializationEventDetailsAssetKey(BaseModel):
     path: list[str]
 
 
+class SubmissionResponseLogEventDetails(BaseModel):
+    run_id: str = Field(alias="runId")
+    step_key: Optional[str] = Field(alias="stepKey")
+    timestamp: str
+    message: str
+
+
 LegacySkipEventDetails.model_rebuild()
 MaterializationEventDetails.model_rebuild()
 ObservationEventDetails.model_rebuild()
 PlannedMaterializationEventDetails.model_rebuild()
+SubmissionResponseLogEventDetails.model_rebuild()
