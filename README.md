@@ -15,7 +15,7 @@ Run: `poetry run python -m sds_utils.scrubber`
 * Set environment variables:
   * `DAGSTER_BASE_URL="https://processing.imap-mission.com"`
   * `DAGSTER_API_KEY=<API-KEY>`
-  * `DAGSTER_APP_USERNAME=<username-of-your-choice>`
+  * `DASHBOARD_APP_USERNAME=<username-of-your-choice>`
 
 ### Data ingestion
 
