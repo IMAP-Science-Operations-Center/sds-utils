@@ -31,6 +31,7 @@ classifiers = [
 dependencies = [
     "httpx (>=0.28.1,<0.29.0)",
     "imap-data-access (>=1.1.0,<2.0.0)",
+    "pandera[pandas] (>=0.33,<0.34)",
     "pydantic (>=2.12.0,<3.0.0)",
     "pyyaml (>=6.0,<7.0)",
     "sqlmodel (>=0.0.42,<0.0.43)",
@@ -54,7 +55,6 @@ test = ["pytest>=6.2.5", "pytest-cov>=4.0.0,<5", "pytest-xdist>=3.2,<4"]
 
 [tool.poetry.group.dev.dependencies]
 ariadne-codegen = "^0.18.0"
-pandera = {version = ">=0.33,<0.34", extras = ["pandas"]}
 
 
 # Tool settings
