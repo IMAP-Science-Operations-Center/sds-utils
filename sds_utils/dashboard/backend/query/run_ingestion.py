@@ -32,6 +32,7 @@ from .ingestionbase import (
     plan_ingestion_ranges,
 )
 from .l0_ingestion import ingest_l0_materializations
+from .run_details import ingest_run_details
 
 DAGSTER_PARTITION_TAG = "dagster/partition"
 DEFAULT_PAGE_SIZE = 100
@@ -343,7 +344,7 @@ async def ingest_runs(  # noqa: PLR0912, PLR0913
 
 
 def main() -> None:
-    """Ingest Dagster runs and job-independent L0 materializations."""
+    """Ingest Dagster runs, L0 materializations, and run details."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--namespace", default="prod")
     parser.add_argument("--start-date", default="20260914")
@@ -357,7 +358,7 @@ def main() -> None:
     )
     create_db_and_tables()
 
-    async def ingest_all() -> tuple[int, int]:
+    async def ingest_all() -> tuple[int, int, int]:
         run_count = await ingest_runs(
             start_datetime=start_datetime,
             end_datetime=end_datetime,
@@ -370,10 +371,17 @@ def main() -> None:
             namespace_name=args.namespace,
             show_progress=True,
         )
-        return run_count, l0_count
+        detail_count = await ingest_run_details(
+            namespace_name=args.namespace,
+            show_progress=True,
+        )
+        return run_count, l0_count, detail_count
 
-    run_count, l0_count = asyncio.run(ingest_all())
-    print(f"Processed {run_count} runs and {l0_count} L0 materializations")
+    run_count, l0_count, detail_count = asyncio.run(ingest_all())
+    print(
+        f"Processed {run_count} runs, {l0_count} L0 materializations, "
+        f"and {detail_count} run details"
+    )
 
 
 if __name__ == "__main__":
