@@ -40,6 +40,7 @@ class Filters(FiltersBase):
     """Declare the filters available to dashboard table consumers."""
 
     status = StringRegisteredFilter.property()
+    dagster_status = StringRegisteredFilter.property()
     instrument = StringRegisteredFilter.property(
         hierarchy=StrHierarchySpec(
             hierarchy={
