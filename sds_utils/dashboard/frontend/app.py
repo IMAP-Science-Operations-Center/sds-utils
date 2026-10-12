@@ -77,6 +77,7 @@ def main() -> None:
         favicon="📈",
         reload=False,
         port=8893,
+        reconnect_timeout=30.0,
     )
 
 
