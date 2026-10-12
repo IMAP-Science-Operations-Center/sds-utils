@@ -89,7 +89,9 @@ class PaneNavigator(UIElem):
             label="Summary view",
             on_change=self._select_preset,
         ).classes("min-w-56")
-        self.navigation_container = ui.row().classes("w-full items-center gap-2")
+        self.navigation_container = ui.row().classes(
+            "w-full items-center gap-2 order-last"
+        )
         self._render_navigation()
 
     def apply_temporary_filters(

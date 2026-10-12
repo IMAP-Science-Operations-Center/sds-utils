@@ -88,7 +88,7 @@ class FilteredTableView(FilteredTableViewBase):
                 "Export CSV",
                 icon="download",
                 on_click=self.export_csv,
-            ).props("flat no-caps")
+            ).props("flat no-caps").classes("self-center")
         self.status_summary = StatusSummary(self.filters.menus["status"]).build()
         self.standalone_filters_container = ui.row().classes(
             "w-full items-center gap-3 flex-wrap"
