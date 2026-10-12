@@ -84,6 +84,11 @@ class FilteredTableView(FilteredTableViewBase):
                 self.settings.agg_specs,
                 self.update_table,
             ).build()
+            ui.button(
+                "Export CSV",
+                icon="download",
+                on_click=self.export_csv,
+            ).props("flat no-caps")
         self.status_summary = StatusSummary(self.filters.menus["status"]).build()
         self.standalone_filters_container = ui.row().classes(
             "w-full items-center gap-3 flex-wrap"
@@ -120,6 +125,17 @@ class FilteredTableView(FilteredTableViewBase):
         )
         self.filters.update_query(projected_df)
         self.status_summary.update_query(projected_df, select_new_values=True)
+
+    def export_csv(self) -> None:
+        """Download every in-memory column of the rows matching current filters."""
+        data_df = self.table.transform_data(
+            projection_spec=self.projection.spec,
+            filter_kwargs=self.navigator.apply_temporary_filters(
+                self.filters.arguments()
+            ),
+            sort_specs=_SORT_SPECS,
+        )
+        ui.download.content(data_df.to_csv(index=False), "imap_data.csv")
 
     def update_table(self) -> None:
         """Apply current state and rebuild the table and summaries."""
