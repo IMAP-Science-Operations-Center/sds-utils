@@ -4,6 +4,7 @@ import datetime
 from abc import abstractmethod
 from collections.abc import Callable
 
+import pandas as pd
 from nicegui import ui
 
 from ..backend.data import QuerySpec
@@ -53,7 +54,7 @@ class FilteredTableView(FilteredTableViewBase):
         self.settings = settings
         self._sync_settings = sync_settings
         self.renderer = DashboardTableRenderer(dagster_url)
-        self.display_df = None
+        self.display_df: pd.DataFrame | None = None
 
     def render(self) -> None:
         """Create controls, summaries, and the initial table."""
