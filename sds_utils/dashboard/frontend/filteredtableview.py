@@ -53,6 +53,7 @@ class FilteredTableView(FilteredTableViewBase):
         self.settings = settings
         self._sync_settings = sync_settings
         self.renderer = DashboardTableRenderer(dagster_url)
+        self.display_df = None
 
     def render(self) -> None:
         """Create controls, summaries, and the initial table."""
@@ -128,14 +129,11 @@ class FilteredTableView(FilteredTableViewBase):
 
     def export_csv(self) -> None:
         """Download every in-memory column of the rows matching current filters."""
-        data_df = self.table.transform_data(
-            projection_spec=self.projection.spec,
-            filter_kwargs=self.navigator.apply_temporary_filters(
-                self.filters.arguments()
-            ),
-            sort_specs=_SORT_SPECS,
-        )
-        ui.download.content(data_df.to_csv(index=False), "imap_data.csv")
+        if self.display_df is None:
+            ui.notify("No data to export", type="warning")
+            return None
+
+        ui.download.content(self.display_df.to_csv(index=False), "imap_data.csv")
 
     def update_table(self) -> None:
         """Apply current state and rebuild the table and summaries."""
@@ -147,19 +145,19 @@ class FilteredTableView(FilteredTableViewBase):
             agg_spec=self.navigator.agg_spec,
             sort_specs=_SORT_SPECS,
         )
-        display_df = self.renderer.display_data(data_df, self.navigator.agg_spec)
+        self.display_df = self.renderer.display_data(data_df, self.navigator.agg_spec)
 
         self.standalone_filters_container.clear()
         with self.standalone_filters_container:
             self.filters.render_standalone(
-                display_df.columns,
+                self.display_df.columns,
                 disabled=self.navigator.disabled_filters,
             )
 
         self.table_container.clear()
         with self.table_container:
             self.renderer.render(
-                display_df,
+                self.display_df,
                 filter_controls=self.filters,
                 options=TableRenderOptions(
                     disabled_filters=self.navigator.disabled_filters,
