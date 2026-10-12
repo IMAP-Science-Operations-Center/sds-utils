@@ -93,7 +93,7 @@ class FilteredTableView(FilteredTableViewBase):
         )
         self.update_query(
             QuerySpec(
-                start_time=datetime.datetime(2026, 8, 1),
+                start_time=datetime.datetime(2026, 10, 8),
                 end_time=datetime.datetime(2100, 12, 31)
                 - datetime.timedelta(seconds=1),
                 version_mode="latest",
