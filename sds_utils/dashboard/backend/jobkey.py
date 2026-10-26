@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import NamedTuple
 
 import httpx
+import imap_data_access
 import yaml
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,10 @@ def _contains_asset(value: object, expected: tuple[str, str, str]) -> bool:
 @lru_cache(maxsize=32)
 def _dependencies_for_instrument(instrument: str) -> dict[str, object]:
     """Load and cache one instrument's current dependency YAML."""
-    if not _INSTRUMENT_PATTERN.fullmatch(instrument):
+    if (
+        not _INSTRUMENT_PATTERN.fullmatch(instrument)
+        or instrument not in imap_data_access.VALID_INSTRUMENTS
+    ):
         return {}
     url = _DEPENDENCIES_URL.format(instrument=instrument)
     try:

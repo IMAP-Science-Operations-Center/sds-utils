@@ -123,6 +123,24 @@ def test_named_job_does_not_consult_selected_assets(
     assert parts == ("hit_l2_summedintensity", "hit", "l2", "summedintensity")
 
 
+def test_invalid_instrument_does_not_request_dependency_yaml(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """System asset prefixes must not be treated as instrument names."""
+    monkeypatch.setattr(
+        jobkey.httpx,
+        "get",
+        lambda *_args, **_kwargs: pytest.fail("YAML should not be requested"),
+    )
+    jobkey._dependencies_for_instrument.cache_clear()
+    try:
+        definitions = jobkey.current_job_definitions(["l0"])
+    finally:
+        jobkey._dependencies_for_instrument.cache_clear()
+
+    assert definitions == {}
+
+
 def test_mixed_instruments_cannot_define_one_job_key() -> None:
     parts = jobkey.derive_job_key(
         "__ASSET_JOB", [["hit_l2_summedintensity"], ["glows_l1a_de"]]
