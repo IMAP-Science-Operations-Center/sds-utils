@@ -119,7 +119,7 @@ def _known_instruments(session: Session, namespace_id: int) -> set[str]:
         )
     ):
         instrument = parse_job_key(job_key).instrument
-        if instrument is not None:
+        if instrument is not None and instrument != "l0":
             instruments.add(instrument)
     return instruments
 
