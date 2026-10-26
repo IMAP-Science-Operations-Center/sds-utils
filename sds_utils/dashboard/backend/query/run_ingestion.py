@@ -225,7 +225,7 @@ def _cache_page(
     session.commit()
 
 
-async def ingest_runs(  # noqa: PLR0912, PLR0913
+async def ingest_runs(  # noqa: PLR0912, PLR0913, PLR0915
     start_datetime: datetime.datetime | None,
     end_datetime: datetime.datetime | None,
     *,
@@ -237,6 +237,7 @@ async def ingest_runs(  # noqa: PLR0912, PLR0913
     show_progress: bool = False,
     db_engine: Engine = engine,
     client: DagsterGraphQLClient | None = None,
+    dry_run: bool = False,
 ) -> int:
     """Extend a namespace's cached update-time range in either direction.
 
@@ -302,21 +303,25 @@ async def ingest_runs(  # noqa: PLR0912, PLR0913
                 requested_end=end_datetime,
                 overlap_buffer=overlap_buffer,
             )
+            total = None
             if ranges:
-                total = None
-                if show_progress:
+                if show_progress or dry_run:
                     total = sum(
                         [
                             await _count_runs(client, ingestion_range)
                             for ingestion_range in ranges
                         ]
                     )
-                progress = tqdm(
-                    total=total,
-                    desc="Ingesting runs",
-                    disable=not show_progress,
-                    unit="run",
-                )
+                    if not dry_run:
+                        progress = tqdm(
+                            total=total,
+                            desc="Ingesting runs",
+                            disable=not show_progress,
+                            unit="run",
+                        )
+            if dry_run:
+                print(f"Found {total or 0} runs to ingest")
+                return -1
             for ingestion_range in ranges:
                 async for runs in _iter_runs(
                     client,
@@ -349,6 +354,7 @@ def main() -> None:
     parser.add_argument("--namespace", default="prod")
     parser.add_argument("--start-date", default="20260914")
     parser.add_argument("--end-date", default="20260922")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     start_datetime = datetime.datetime.strptime(args.start_date, "%Y%m%d").replace(
         tzinfo=datetime.UTC
@@ -364,24 +370,32 @@ def main() -> None:
             end_datetime=end_datetime,
             namespace_name=args.namespace,
             show_progress=True,
+            dry_run=args.dry_run,
         )
-        l0_count = await ingest_l0_materializations(
-            start_datetime=start_datetime,
-            end_datetime=end_datetime,
-            namespace_name=args.namespace,
-            show_progress=True,
-        )
+        if not args.dry_run:
+            l0_count = await ingest_l0_materializations(
+                start_datetime=start_datetime,
+                end_datetime=end_datetime,
+                namespace_name=args.namespace,
+                show_progress=True,
+            )
+        else:
+            l0_count = -1
         detail_count = await ingest_run_details(
             namespace_name=args.namespace,
             show_progress=True,
+            dry_run=args.dry_run,
         )
         return run_count, l0_count, detail_count
 
     run_count, l0_count, detail_count = asyncio.run(ingest_all())
-    print(
-        f"Processed {run_count} runs, {l0_count} L0 materializations, "
-        f"and {detail_count} run details"
-    )
+    if not args.dry_run:
+        print(
+            f"Processed {run_count} runs, {l0_count} L0 materializations, "
+            f"and {detail_count} run details"
+        )
+    else:
+        print("Dry run complete")
 
 
 if __name__ == "__main__":

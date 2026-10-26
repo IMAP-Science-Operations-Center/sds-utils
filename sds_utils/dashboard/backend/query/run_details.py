@@ -530,6 +530,7 @@ async def ingest_run_details(  # noqa: PLR0913
     show_progress: bool = False,
     db_engine: Engine = engine,
     client: DagsterGraphQLClient | None = None,
+    dry_run: bool = False,
 ) -> int:
     """Derive and cache event details for new or incomplete runs."""
     if batch_size <= 0 or event_page_size <= 0 or pagination_concurrency <= 0:
@@ -550,6 +551,10 @@ async def ingest_run_details(  # noqa: PLR0913
             namespace_id=namespace_id,
         )
         pending_count = len(pending_runs)
+
+    if dry_run:
+        print(f"Found {pending_count} runs for which to ingest details")
+        return -1
 
     if pending_count == 0:
         return 0
