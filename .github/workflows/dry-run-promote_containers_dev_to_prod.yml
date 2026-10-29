@@ -1,0 +1,88 @@
+name: "[Dry Run] Promote Container Images from Dev to Prod"
+
+run-name: "[Dry Run] Promote ${{ inputs.instruments }} ${{ inputs.l3_data && 'L3' || 'L0-L2' }} Containers from Dev to Prod"
+
+on:
+  workflow_dispatch:
+    inputs:
+      instruments:
+        description: 'Instruments to promote'
+        required: true
+        type: choice
+        options:
+          - all
+          - codice
+          - glows
+          - hit
+          - hi
+          - ialirt
+          - idex
+          - lo
+          - mag
+          - spacecraft
+          - swapi
+          - swe
+          - ultra
+        default: all
+      dev_tag:
+        description: 'Source image tag from dev'
+        required: false
+        type: string
+        default: 'latest'
+      prod_tag:
+        description: 'Target image tag for prod'
+        required: false
+        type: string
+        default: 'latest'
+      l3_data:
+        description: 'Deploy L3 data containers (instrument-l3-repo) instead of standard containers (instrument-repo)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  VALID_INSTRUMENTS: "codice glows hit hi ialirt idex lo mag spacecraft swapi swe ultra"
+  VALID_L3_INSTRUMENTS: "codice glows hit hi lo swapi swe ultra"
+  SOURCE_REPO: sds-data-manager
+  SOURCE_ACTION: promote_containers_dev_to_prod.yml
+
+jobs:
+  dry_run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print what would be promoted
+        env:
+          INSTRUMENTS: ${{ inputs.instruments }}
+          DEV_TAG: ${{ inputs.dev_tag }}
+          PROD_TAG: ${{ inputs.prod_tag }}
+          L3_DATA: ${{ inputs.l3_data }}
+        run: |
+          if [ "$L3_DATA" = "true" ]; then
+            LEVEL="L3"
+            VALID="$VALID_L3_INSTRUMENTS"
+          else
+            LEVEL="L0-L2"
+            VALID="$VALID_INSTRUMENTS"
+          fi
+
+          if [ "$INSTRUMENTS" = "all" ]; then
+            INSTRUMENTS="$VALID"
+          fi
+
+          report() {
+            echo ".------------------------------------."
+            echo "| DRY RUN - Nothing Pulled or Pushed |"
+            echo "'------------------------------------'"
+            echo "Main action repo: $SOURCE_REPO"
+            echo "Main action url : https://github.com/IMAP-Science-Operations-Center/$SOURCE_REPO/actions/workflows/$SOURCE_ACTION"
+            echo "Tags Dev -> Prod: $DEV_TAG -> $PROD_TAG"
+            echo "A full run would:"
+            for instrument in $INSTRUMENTS; do
+              echo "  - Promote $LEVEL container for $instrument"
+            done
+          }
+
+          # Print to the step log, and to the run's summary page (in a code
+          # block, so the banner and alignment survive Markdown rendering)
+          report
+          { echo '```'; report; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

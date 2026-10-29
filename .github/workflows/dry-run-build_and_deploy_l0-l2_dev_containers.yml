@@ -1,0 +1,67 @@
+name: "[Dry Run] Build and Deploy Dev Container Images"
+
+run-name: "[Dry Run] Build and Deploy Dev Containers | Instruments: ${{ inputs.instruments }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      instruments:
+        description: 'Instruments to build'
+        required: true
+        type: choice
+        options:
+          - all
+          - codice
+          - glows
+          - hit
+          - hi
+          - ialirt
+          - idex
+          - lo
+          - mag
+          - spacecraft
+          - swapi
+          - swe
+          - ultra
+        default: all
+      git_url:
+        description: 'IMAP Processing Git URL to build from'
+        required: false
+        type: string
+        default: 'https://github.com/IMAP-Science-Operations-Center/imap_processing.git@dev'
+
+env:
+  VALID_INSTRUMENTS: "codice glows hit hi ialirt idex lo mag spacecraft swapi swe ultra"
+  SOURCE_REPO: sds-data-manager
+  SOURCE_ACTION: deploy_dev_containers.yml
+
+jobs:
+  dry_run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print what would be built and pushed
+        env:
+          INSTRUMENTS: ${{ inputs.instruments }}
+          GIT_URL: ${{ inputs.git_url }}
+        run: |
+          if [ "$INSTRUMENTS" = "all" ]; then
+            INSTRUMENTS="$VALID_INSTRUMENTS"
+          fi
+
+          report() {
+            echo ".-----------------------------------."
+            echo "| DRY RUN - Nothing Built or Pushed |"
+            echo "'-----------------------------------'"
+            echo "Main action repo: $SOURCE_REPO"
+            echo "Main action url : https://github.com/IMAP-Science-Operations-Center/$SOURCE_REPO/actions/workflows/$SOURCE_ACTION"
+            echo "Built from      : $GIT_URL"
+            echo "A full run would:"
+            for instrument in $INSTRUMENTS; do
+              echo "  - Build and push L0-L2 container for $instrument"
+            done
+          }
+
+          # Print to the step log, and to the run's summary page (in a code
+          # block, so the banner and alignment survive Markdown rendering)
+          report
+          { echo '```'; report; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
