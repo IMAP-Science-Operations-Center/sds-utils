@@ -1,0 +1,38 @@
+name: "[Dry Run] Docker image build and publish"
+
+run-name: "[Dry Run] Build and Publish Docker Image for ${{ inputs.instrument_name }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      instrument_name:
+        description: 'Instrument name'
+        required: true
+        type: string
+
+env:
+  SOURCE_REPO: imap_L3_processing
+  SOURCE_ACTION: deploy_container.yml
+
+jobs:
+  dry_run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print what would be built and pushed
+        env:
+          INSTRUMENT: ${{ inputs.instrument_name }}
+        run: |
+          report() {
+            echo ".-----------------------------------."
+            echo "| DRY RUN - Nothing Built or Pushed |"
+            echo "'-----------------------------------'"
+            echo "Main action repo: $SOURCE_REPO"
+            echo "Main action url : https://github.com/IMAP-Science-Operations-Center/$SOURCE_REPO/actions/workflows/$SOURCE_ACTION"
+            echo "A full run would:"
+            echo "  - Build and push L3 container for $INSTRUMENT"
+          }
+
+          # Print to the step log, and to the run's summary page (in a code
+          # block, so the banner and alignment survive Markdown rendering)
+          report
+          { echo '```'; report; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

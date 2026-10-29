@@ -1,0 +1,73 @@
+name: "[Dry Run] Deploy"
+
+run-name: "[Dry Run] Deploy to ${{ inputs.environment }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy to"
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+        default: prod
+      ref:
+        description: "Optional git ref (commit SHA, branch, or tag) to deploy (for rollback)"
+        required: false
+        default: ""
+      skip_ialirt:
+        description: "For manual prod deploys only: skip deploying IalirtStack"
+        required: false
+        type: boolean
+        default: true
+      skip_ialirt_ssr:
+        description: "For manual prod deploys only: skip deploying IalirtSsrStack"
+        required: false
+        type: boolean
+        default: true
+
+env:
+  SOURCE_REPO: sds-data-manager
+  SOURCE_ACTION: deploy.yml
+
+jobs:
+  dry_run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print what would be deployed
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          SKIP_IALIRT: ${{ inputs.environment == 'prod' && inputs.skip_ialirt }}
+          SKIP_IALIRT_SSR: ${{ inputs.environment == 'prod' && inputs.skip_ialirt_ssr }}
+        run: |
+          STACKS="all"
+          if [ "$SKIP_IALIRT" = "true" ] && [ "$SKIP_IALIRT_SSR" = "true" ]; then
+            STACKS="all, except: IalirtStack, IalirtSsrStack"
+          elif [ "$SKIP_IALIRT" = "true" ]; then
+            STACKS="all, except: IalirtStack"
+          elif [ "$SKIP_IALIRT_SSR" = "true" ]; then
+            STACKS="all, except: IalirtSsrStack"
+          fi
+
+          report() {
+            echo ".----------------------------."
+            echo "| DRY RUN - Nothing Deployed |"
+            echo "'----------------------------'"
+            echo "Main action repo: $SOURCE_REPO"
+            echo "Main action url : https://github.com/IMAP-Science-Operations-Center/$SOURCE_REPO/actions/workflows/$SOURCE_ACTION"
+            echo "Environment     : $ENVIRONMENT"
+            echo "A full run would:"
+            echo "  - Deploy CDK stacks to $ENVIRONMENT: $STACKS"
+            echo "  - Force a redeploy of the Dagster ECS services"
+            echo "  - Record the deployed commit as the new $ENVIRONMENT baseline"
+            if [ "$ENVIRONMENT" = "prod" ]; then
+              echo "  - Create and push a prod-<timestamp> release tag"
+            fi
+          }
+
+          # Print to the step log, and to the run's summary page (in a code
+          # block, so the banner and alignment survive Markdown rendering)
+          report
+          { echo '```'; report; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
