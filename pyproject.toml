@@ -29,8 +29,13 @@ classifiers = [
     "Operating System :: MacOS",
 ]
 dependencies = [
-    "imap-data-access (>=1.1.0,<2.0.0)"
+    "imap-data-access (>=1.1.0,<2.0.0)",
+    "nicegui (>=3.18.0,<4.0.0)",
+    "pygithub (>=2.10.0,<3.0.0)"
 ]
+
+[project.scripts]
+imap-gh-dash = "sds_utils.github_dashboard.imap_gh_dash:main"
 
 [tool.poetry]
 version = "0.0.0"
