@@ -43,8 +43,14 @@ class QuerySpec(BaseModel):
 
     start_time: datetime.datetime
     end_time: datetime.datetime
+    end_delta: datetime.timedelta = datetime.timedelta(seconds=1)
     date_mode: Literal["update_time", "partition"] = "update_time"
     version_mode: Literal["all", "latest"] = "all"
+
+    @property
+    def true_end_time(self) -> datetime.datetime:
+        """Return the adjusted end time to be used in the query."""
+        return self.end_time - self.end_delta
 
 
 class DataSourceBase:

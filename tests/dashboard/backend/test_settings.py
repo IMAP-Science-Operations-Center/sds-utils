@@ -27,7 +27,7 @@ def test_dashboard_settings_have_safe_defaults() -> None:
     assert settings.filtering == {}
     assert settings.query == QuerySpec(
         start_time=datetime.datetime(2026, 10, 1),
-        end_time=datetime.datetime(2099, 12, 31, 23, 59, 59),
+        end_time=datetime.datetime(2100, 1, 1, 0, 0, 0),
         version_mode="latest",
     )
 

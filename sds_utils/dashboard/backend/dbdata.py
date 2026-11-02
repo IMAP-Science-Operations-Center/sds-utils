@@ -159,7 +159,7 @@ class DBDataSource(DataSourceBase):
     def query(self, query: QuerySpec) -> pd.DataFrame:  # noqa: PLR0912, PLR0915
         """Return runs selected by update time or overlapping partition interval."""
         start_time = _utc_naive(query.start_time)
-        end_time = _utc_naive(query.end_time)
+        end_time = _utc_naive(query.true_end_time)
         if start_time > end_time:
             raise ValueError("Query start_time must not be later than end_time")
 

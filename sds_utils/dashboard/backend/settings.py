@@ -28,7 +28,7 @@ def _default_query() -> QuerySpec:
     """Create the default dashboard query interval."""
     return QuerySpec(
         start_time=datetime.datetime(2026, 10, 1),
-        end_time=datetime.datetime(2100, 1, 1) - datetime.timedelta(seconds=1),
+        end_time=datetime.datetime(2100, 1, 1),
         version_mode="latest",
     )
 

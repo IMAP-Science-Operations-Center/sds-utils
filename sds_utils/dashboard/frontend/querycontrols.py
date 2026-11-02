@@ -95,9 +95,6 @@ class DateTimeDropdown(UIElem):
 class QueryControls(UIElem):
     """Own the start and end datetime controls for a query specification."""
 
-    # amount to offset specified end_date before constructing a query
-    END_DELTA = datetime.timedelta(seconds=1)
-
     def __init__(
         self,
         query: QuerySpec,
@@ -115,7 +112,7 @@ class QueryControls(UIElem):
         ).build()
         self.end = DateTimeDropdown(
             "End time",
-            self.query.end_time + self.END_DELTA,
+            self.query.end_time,
             self._set_end,
         ).build()
 
@@ -130,7 +127,7 @@ class QueryControls(UIElem):
         start_time: datetime.datetime,
         end_time: datetime.datetime,
     ) -> None:
-        end_time_updated = end_time - self.END_DELTA
+        end_time_updated = end_time
         if start_time > end_time_updated:
             ui.notify("Start time must not be later than end time", type="negative")
             return
