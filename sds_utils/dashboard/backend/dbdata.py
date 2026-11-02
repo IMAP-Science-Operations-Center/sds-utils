@@ -412,7 +412,9 @@ class DBDataSource(DataSourceBase):
         data_df = pd.DataFrame.from_records(records)
         data_df["repoint"] = data_df["repoint"].astype("Int64")
         for column in _DATETIME_COLUMNS:
-            data_df[column] = pd.to_datetime(data_df[column], utc=True)
+            data_df[column] = pd.to_datetime(data_df[column], utc=True).astype(
+                "datetime64[ns, UTC]"
+            )
         data_df["start_date"] = data_df["start_time"].dt.normalize()
         data_df["end_date"] = data_df["end_time"].dt.normalize()
         for column in _COUNT_COLUMNS:
