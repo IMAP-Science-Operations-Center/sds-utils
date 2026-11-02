@@ -6,8 +6,38 @@ import pandas as pd
 from nicegui import ui
 
 from ..backend.status import STATUS_ORDER, StatusCounts
+from .elems import help_icon
 from .filters import StringFilterMenu
 from .uielem import UIElem
+
+STATUS_HELP = {
+    "materialized": "Materialized: The run created all of its declared assets.",
+    "materializing": (
+        "Materializing: The run has not completed yet. "
+        "It might be queued or in progress."
+    ),
+    "canceling": (
+        "Canceling: The run has been marked for cancellation but not canceled yet."
+    ),
+    "canceled": "Canceled: The run was canceled before completing.",
+    "failed": "Failed: Dagster marked the run as failed.",
+    "skipped": "Skipped: The run skipped, typically due to missing dependencies.",
+    "missing": (
+        "Missing: The run completed without materializing all of its declared assets."
+    ),
+    "not-run": (
+        "Not run: No run was kicked off, "
+        "either manually or automatically with a Dagster sensor."
+    ),
+    "unknown": (
+        "Unknown: Detailed data for this run has not yet been ingested. "
+        "This most often occurs while ingestion is in progress."
+    ),
+    "not-found": (
+        "Not found: The logic for determining the run's status failed. "
+        "This should be rare."
+    ),
+}
 
 STATUS_CARD_CLASSES = {
     "materialized": "border-green-400 bg-green-50 text-green-900",
@@ -132,10 +162,13 @@ class StatusFilterCard(UIElem):
         """Render the clickable card and its count."""
         self.card = ui.card().classes(replace=self._classes())
         self.card.props("role=button tabindex=0")
-        self.card.tooltip(f"Toggle {self.status} partitions")
         self.card.on("click", self._toggle)
         with self.card:
-            ui.label(self.status).classes("text-xs uppercase tracking-wide")
+            with ui.row().classes("w-full items-center justify-between gap-2"):
+                ui.label(self.status).classes("text-xs uppercase tracking-wide")
+                help_text = STATUS_HELP.get(self.status)
+                if help_text:
+                    help_icon(help_text)
             self.count_label = ui.label("0").classes("text-2xl font-semibold")
 
     def set_count(self, shown: int) -> None:
