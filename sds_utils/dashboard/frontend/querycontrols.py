@@ -2,6 +2,7 @@
 
 import datetime
 from collections.abc import Callable
+from typing import Any
 
 from nicegui import ui
 from nicegui.events import ValueChangeEventArguments
@@ -93,7 +94,7 @@ class DateTimeDropdown(UIElem):
 
 
 class QueryControls(UIElem):
-    """Own the start and end datetime controls for a query specification."""
+    """Own the editable controls for a query specification."""
 
     def __init__(
         self,
@@ -104,7 +105,7 @@ class QueryControls(UIElem):
         self._on_change = on_change
 
     def render(self) -> None:
-        """Render start and end datetime dropdowns."""
+        """Render datetime, date-mode, and version-mode controls."""
         self.start = DateTimeDropdown(
             "Start time",
             self.query.start_time,
@@ -115,12 +116,42 @@ class QueryControls(UIElem):
             self.query.end_time,
             self._set_end,
         ).build()
+        self.date_mode = ui.select(
+            {
+                "update_time": "Update time",
+                "partition": "Partition overlap",
+            },
+            value=self.query.date_mode,
+            label="Date selection",
+            on_change=self._set_date_mode,
+        ).classes("min-w-44")
+        self.version_mode = ui.select(
+            {
+                "latest": "Latest runs",
+                "all": "All runs",
+            },
+            value=self.query.version_mode,
+            label="Version selection",
+            on_change=self._set_version_mode,
+        ).classes("min-w-44")
 
     def _set_start(self, value: datetime.datetime) -> None:
         self._set_interval(value, self.query.end_time)
 
     def _set_end(self, value: datetime.datetime) -> None:
         self._set_interval(self.query.start_time, value)
+
+    def _set_date_mode(self, event: ValueChangeEventArguments[Any]) -> None:
+        if event.value not in {"update_time", "partition"}:
+            return
+        self.query = self.query.model_copy(update={"date_mode": event.value})
+        self._on_change(self.query)
+
+    def _set_version_mode(self, event: ValueChangeEventArguments[Any]) -> None:
+        if event.value not in {"latest", "all"}:
+            return
+        self.query = self.query.model_copy(update={"version_mode": event.value})
+        self._on_change(self.query)
 
     def _set_interval(
         self,
@@ -139,7 +170,9 @@ class QueryControls(UIElem):
         self._on_change(self.query)
 
     def set_query(self, query: QuerySpec) -> None:
-        """Replace the current query and refresh both displayed datetimes."""
+        """Replace the current query and refresh all displayed controls."""
         self.query = query.model_copy(deep=True)
         self.start.set_value(self.query.start_time)
         self.end.set_value(self.query.end_time)
+        self.date_mode.value = self.query.date_mode
+        self.version_mode.value = self.query.version_mode
