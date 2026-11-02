@@ -77,14 +77,14 @@ class FilteredTableView(FilteredTableViewBase):
             on_change=self.update_table,
         )
         with ui.row().classes("w-full items-start gap-3 flex-wrap"):
-            self.projection = ProjectionControls(
-                self.settings.projection,
-                self.update_projection,
-            ).build()
             self.navigator = PaneNavigator(
                 self.settings.active_agg_preset,
                 self.settings.agg_specs,
                 self.update_table,
+            ).build()
+            self.projection = ProjectionControls(
+                self.settings.projection,
+                self.update_projection,
             ).build()
             ui.button(
                 "Export CSV",
