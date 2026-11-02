@@ -3,10 +3,10 @@
 from collections.abc import Callable
 from typing import Any
 
-from nicegui import ui
 from nicegui.events import ValueChangeEventArguments
 
 from ..backend.projectionbase import JobProjectionMode, ProjectionSpec
+from .elems import Select
 from .uielem import UIElem
 
 
@@ -27,12 +27,20 @@ class ProjectionControls(UIElem):
             mode.value: mode.name.replace("_", " ").capitalize()
             for mode in JobProjectionMode
         }
-        ui.select(
+        Select(
             options,
             value=self.spec.job_projection_mode.value,
             label="Run projection",
             on_change=self._select_mode,
-        ).classes("min-w-56")
+            help=(
+                'Set the "Run projection" behavior.\n'
+                '- "All runs": Don\'t do run projection.\n'
+                '- "Latest jobs only": Project runs onto the latest job definitions '
+                "(from dependency yaml files)\n"
+                '- "Legacy runs only": Show only runs that could not be projected '
+                "onto a job definition"
+            ),
+        ).build().classes("min-w-56")
 
     def _select_mode(self, event: ValueChangeEventArguments[Any]) -> None:
         self.spec = self.spec.model_copy(

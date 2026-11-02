@@ -9,6 +9,7 @@ from nicegui.events import ValueChangeEventArguments
 
 from ..backend.aggbase import DATES_SUMMARY_EXTRA_COLUMNS, AggPreset, AggSpec
 from ..backend.filtersbase import FilterArguments
+from .elems import Select
 from .uielem import UIElem
 
 _DRILLDOWNS = {
@@ -83,12 +84,30 @@ class PaneNavigator(UIElem):
             preset.value: preset.name.replace("_", " ").capitalize()
             for preset in AggPreset
         }
-        self.summary_view = ui.select(
-            preset_options,
-            value=self.agg_spec.preset.value,
-            label="Summary view",
-            on_change=self._select_preset,
-        ).classes("min-w-56")
+        self.summary_view = (
+            Select(
+                preset_options,
+                value=self.agg_spec.preset.value,
+                label="Summary view",
+                on_change=self._select_preset,
+                help=(
+                    "Select the current table view.\n"
+                    '- "Raw": Show all queried runs\n'
+                    '- "Dates summary": Aggregate runs by start date '
+                    "(and other optional fields)\n"
+                    '- "Data levels snapshot": Aggregate runs by data level '
+                    "and start date. "
+                    "Best for one instrument at a time\n"
+                    '- "Instruments snapshot": Aggregate runs by instrument '
+                    "and start date. "
+                    "This is the recommended default view\n"
+                    '- "Jobs summary": Aggregate runs by '
+                    "(instrument, data-level, descriptor)"
+                ),
+            )
+            .build()
+            .classes("min-w-56")
+        )
         self.navigation_container = ui.row().classes(
             "w-full items-center gap-2 order-last"
         )

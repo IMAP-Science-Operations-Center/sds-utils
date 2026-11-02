@@ -8,6 +8,7 @@ from nicegui import ui
 from nicegui.events import ValueChangeEventArguments
 
 from ..backend.data import QuerySpec
+from .elems import Select, help_icon
 from .uielem import UIElem
 
 _DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -21,16 +22,20 @@ class DateTimeDropdown(UIElem):
         label: str,
         value: datetime.datetime,
         on_change: Callable[[datetime.datetime], None],
+        help: str | None = None,
     ) -> None:
         self.label = label
         self.value = value
         self._on_change = on_change
+        self.help = help
 
     def render(self) -> None:
         """Render the idle button and its two-step picker menu."""
         self.button = ui.button(icon="event").props("outline no-caps")
         self._update_button_text()
         with self.button:
+            if self.help is not None:
+                help_icon(self.help, classes="ml-2")
             self.menu = ui.menu()
             self.menu.on_value_change(self._menu_visibility_changed)
             with self.menu:
@@ -110,30 +115,53 @@ class QueryControls(UIElem):
             "Start time",
             self.query.start_time,
             self._set_start,
+            help="Set the start time (inclusive) used for the data query.",
         ).build()
         self.end = DateTimeDropdown(
             "End time",
             self.query.end_time,
             self._set_end,
+            help="Set the end time (exclusive) used for the data query.",
         ).build()
-        self.date_mode = ui.select(
-            {
-                "update_time": "Update time",
-                "partition": "Partition overlap",
-            },
-            value=self.query.date_mode,
-            label="Date selection",
-            on_change=self._set_date_mode,
-        ).classes("min-w-44")
-        self.version_mode = ui.select(
-            {
-                "latest": "Latest runs",
-                "all": "All runs",
-            },
-            value=self.query.version_mode,
-            label="Version selection",
-            on_change=self._set_version_mode,
-        ).classes("min-w-44")
+        self.date_mode = (
+            Select(
+                {
+                    "update_time": "Update time",
+                    "partition": "Partition overlap",
+                },
+                value=self.query.date_mode,
+                label="Date selection",
+                on_change=self._set_date_mode,
+                help=(
+                    "Adjust how the query selects runs based on timestamp.\n"
+                    '- "Update time" selects runs which were last updated in the '
+                    "query window.\n"
+                    '- "Partition overlap" selects runs whose partition '
+                    "timestamps overlap with the query window."
+                ),
+            )
+            .build()
+            .classes("min-w-44")
+        )
+        self.version_mode = (
+            Select(
+                {
+                    "latest": "Latest runs",
+                    "all": "All runs",
+                },
+                value=self.query.version_mode,
+                label="Version selection",
+                on_change=self._set_version_mode,
+                help=(
+                    "Adjust how the query selects runs based on version.\n"
+                    '- "All runs" selects all runs.\n'
+                    '- "Latest runs" selects only the latest run for '
+                    "each job definition."
+                ),
+            )
+            .build()
+            .classes("min-w-44")
+        )
 
     def _set_start(self, value: datetime.datetime) -> None:
         self._set_interval(value, self.query.end_time)
