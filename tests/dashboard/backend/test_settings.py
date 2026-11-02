@@ -1,10 +1,13 @@
 """Tests for persisted dashboard settings."""
 
+import datetime
+
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
 from sds_utils.dashboard.backend.aggbase import AggPreset, AggSpec
 from sds_utils.dashboard.backend.db.models import PersistentSettings, UserProfile
+from sds_utils.dashboard.backend.data import QuerySpec
 from sds_utils.dashboard.backend.projectionbase import (
     JobProjectionMode,
     ProjectionSpec,
@@ -22,6 +25,11 @@ def test_dashboard_settings_have_safe_defaults() -> None:
     }
     assert settings.projection == ProjectionSpec()
     assert settings.filtering == {}
+    assert settings.query == QuerySpec(
+        start_time=datetime.datetime(2026, 10, 1),
+        end_time=datetime.datetime(2099, 12, 31, 23, 59, 59),
+        version_mode="latest",
+    )
 
 
 def test_faulty_stored_field_falls_back_without_discarding_valid_fields() -> None:
@@ -109,10 +117,33 @@ def test_settings_repository_loads_defaults_and_round_trips_settings() -> None:
             )
         },
         filtering={"instrument": {"excluded_values_regex": "hit"}},
+        query=QuerySpec(
+            start_time=datetime.datetime(2026, 10, 20, 1, 2, 3),
+            end_time=datetime.datetime(2026, 10, 21, 4, 5, 6),
+            date_mode="partition",
+            version_mode="all",
+        ),
     )
     repository.save(profile.id, settings)
 
     assert repository.load(profile.id) == settings
+
+
+def test_invalid_stored_query_falls_back_without_discarding_other_fields() -> None:
+    """A malformed query should not discard valid unrelated settings."""
+    settings = DashboardSettings.from_stored(
+        {
+            "active_agg_preset": "dates_summary",
+            "query": {
+                "start_time": "not-a-datetime",
+                "end_time": "2026-10-21T04:05:06",
+                "version_mode": "latest",
+            },
+        }
+    )
+
+    assert settings.active_agg_preset is AggPreset.DATES_SUMMARY
+    assert settings.query == DashboardSettings().query
 
 
 def test_legacy_aggregation_settings_fall_back_to_defaults() -> None:

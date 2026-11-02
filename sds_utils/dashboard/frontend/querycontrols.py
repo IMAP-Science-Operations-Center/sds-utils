@@ -140,3 +140,9 @@ class QueryControls(UIElem):
         self.start.set_value(start_time)
         self.end.set_value(end_time)
         self._on_change(self.query)
+
+    def set_query(self, query: QuerySpec) -> None:
+        """Replace the current query and refresh both displayed datetimes."""
+        self.query = query.model_copy(deep=True)
+        self.start.set_value(self.query.start_time)
+        self.end.set_value(self.query.end_time)

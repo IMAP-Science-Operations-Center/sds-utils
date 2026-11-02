@@ -1,6 +1,5 @@
 """NiceGUI orchestration for filtered and aggregated dashboard tables."""
 
-import datetime
 from abc import abstractmethod
 from collections.abc import Callable
 
@@ -77,11 +76,7 @@ class FilteredTableView(FilteredTableViewBase):
             initial_arguments=self.settings.filtering,
             on_change=self.update_table,
         )
-        initial_query = QuerySpec(
-            start_time=datetime.datetime(2026, 10, 8),
-            end_time=datetime.datetime(2100, 12, 31) - datetime.timedelta(seconds=1),
-            version_mode="latest",
-        )
+        initial_query = self.settings.query.model_copy(deep=True)
         with ui.row().classes("w-full items-start gap-3 flex-wrap"):
             self.navigator = PaneNavigator(
                 self.settings.active_agg_preset,
@@ -112,6 +107,7 @@ class FilteredTableView(FilteredTableViewBase):
 
     def update_query(self, query: QuerySpec) -> None:
         """Reload backend data and refresh query-dependent controls."""
+        self.query_controls.set_query(query)
         self.table.set_query(query)
         self.table.refresh_data()
         self.full_data_df = self.table.transform_data()
@@ -180,5 +176,6 @@ class FilteredTableView(FilteredTableViewBase):
                 agg_specs=self.navigator.agg_specs,
                 projection=self.projection.spec,
                 filtering=persistent_filters,
+                query=self.query_controls.query,
             )
         )

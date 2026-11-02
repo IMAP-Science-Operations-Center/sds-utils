@@ -1,5 +1,6 @@
 """Typed persistent settings for the dashboard interface."""
 
+import datetime
 from collections.abc import Mapping
 from typing import Self
 
@@ -13,6 +14,7 @@ from pydantic import (
 )
 
 from .aggbase import AggPreset, AggSpec
+from .data import QuerySpec
 from .filtersbase import FilterArguments
 from .projectionbase import ProjectionSpec
 
@@ -22,8 +24,17 @@ def _default_agg_specs() -> dict[AggPreset, AggSpec]:
     return {preset: AggSpec(preset=preset) for preset in AggPreset}
 
 
+def _default_query() -> QuerySpec:
+    """Create the default dashboard query interval."""
+    return QuerySpec(
+        start_time=datetime.datetime(2026, 10, 1),
+        end_time=datetime.datetime(2100, 1, 1) - datetime.timedelta(seconds=1),
+        version_mode="latest",
+    )
+
+
 class DashboardSettings(BaseModel):
-    """Projection, aggregation, and filtering choices persisted for one user."""
+    """Query, projection, aggregation, and filters persisted for one user."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -31,6 +42,7 @@ class DashboardSettings(BaseModel):
     agg_specs: dict[AggPreset, AggSpec] = Field(default_factory=_default_agg_specs)
     projection: ProjectionSpec = Field(default_factory=ProjectionSpec)
     filtering: FilterArguments = Field(default_factory=dict)
+    query: QuerySpec = Field(default_factory=_default_query)
 
     @field_validator("agg_specs", mode="before")
     @classmethod
