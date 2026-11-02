@@ -13,6 +13,7 @@ from ..backend.settings import DashboardSettings
 from .filtercontrols import FilterControls
 from .navigation import PaneNavigator
 from .projectioncontrols import ProjectionControls
+from .querycontrols import QueryControls
 from .status import StatusSummary
 from .tablerenderer import DashboardTableRenderer, TableRenderOptions
 from .uielem import UIElem
@@ -76,6 +77,11 @@ class FilteredTableView(FilteredTableViewBase):
             initial_arguments=self.settings.filtering,
             on_change=self.update_table,
         )
+        initial_query = QuerySpec(
+            start_time=datetime.datetime(2026, 10, 8),
+            end_time=datetime.datetime(2100, 12, 31) - datetime.timedelta(seconds=1),
+            version_mode="latest",
+        )
         with ui.row().classes("w-full items-start gap-3 flex-wrap"):
             self.navigator = PaneNavigator(
                 self.settings.active_agg_preset,
@@ -85,6 +91,10 @@ class FilteredTableView(FilteredTableViewBase):
             self.projection = ProjectionControls(
                 self.settings.projection,
                 self.update_projection,
+            ).build()
+            self.query_controls = QueryControls(
+                initial_query,
+                self.update_query,
             ).build()
             ui.button(
                 "Export CSV",
@@ -98,14 +108,7 @@ class FilteredTableView(FilteredTableViewBase):
         self.table_container = ui.column().classes(
             "w-full flex-1 min-h-0 overflow-hidden"
         )
-        self.update_query(
-            QuerySpec(
-                start_time=datetime.datetime(2026, 10, 8),
-                end_time=datetime.datetime(2100, 12, 31)
-                - datetime.timedelta(seconds=1),
-                version_mode="latest",
-            )
-        )
+        self.update_query(initial_query)
 
     def update_query(self, query: QuerySpec) -> None:
         """Reload backend data and refresh query-dependent controls."""
