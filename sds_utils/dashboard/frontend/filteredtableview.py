@@ -5,6 +5,7 @@ from collections.abc import Callable
 
 import pandas as pd
 from nicegui import ui
+from nicegui.events import ValueChangeEventArguments
 
 from ..backend.data import QuerySpec
 from ..backend.filteredtable import FilteredTable, SortSpec
@@ -59,6 +60,9 @@ class FilteredTableView(FilteredTableViewBase):
 
     def render(self) -> None:
         """Create controls, summaries, and the initial table."""
+        self.dark_mode = ui.dark_mode(
+            self.settings.misc_settings.dark_mode, on_change=self._update_dark_mode
+        )
         ui.add_css(
             """
             .dashboard-sticky-table {
@@ -100,9 +104,7 @@ class FilteredTableView(FilteredTableViewBase):
                 icon="download",
                 on_click=self.export_csv,
             ).props("flat no-caps").classes("self-center")
-            self.settings_menu = SettingsMenu(
-                self.settings, self._sync_settings
-            ).build()
+            self.settings_menu = SettingsMenu(self.dark_mode).build()
         self.status_summary = StatusSummary(self.filters.menus["status"]).build()
         self.standalone_filters_container = ui.row().classes(
             "w-full items-center gap-3 flex-wrap"
@@ -111,6 +113,10 @@ class FilteredTableView(FilteredTableViewBase):
             "w-full flex-1 min-h-0 overflow-hidden"
         )
         self.update_query(initial_query)
+
+    def _update_dark_mode(self, event: ValueChangeEventArguments[bool | None]) -> None:
+        self.settings.misc_settings.dark_mode = bool(event.value)
+        self._sync_settings(self.settings)
 
     def update_query(self, query: QuerySpec) -> None:
         """Reload backend data and refresh query-dependent controls."""

@@ -8,28 +8,42 @@ from nicegui import ui
 
 from sds_utils.dashboard.backend.settings import DashboardSettings
 from sds_utils.dashboard.frontend import app as dashboard_app
+from sds_utils.dashboard.frontend import filteredtableview
 from sds_utils.dashboard.frontend.filteredtableview import FilteredTableView
-from sds_utils.dashboard.frontend.settingsmenu import SettingsMenu
 
 
-def test_theme_switch_and_programmatic_changes_save_preferences() -> None:
+def test_theme_switch_and_programmatic_changes_save_preferences(monkeypatch) -> None:
     saved = []
     settings = DashboardSettings(misc_settings={"dark_mode": True})
+    for name in (
+        "FilterControls",
+        "PaneNavigator",
+        "ProjectionControls",
+        "QueryControls",
+        "StatusSummary",
+    ):
+        monkeypatch.setattr(filteredtableview, name, MagicMock())
+    view = FilteredTableView(
+        Mock(),
+        dagster_url="https://example.com",
+        settings=settings,
+        sync_settings=lambda value: saved.append(value.model_dump(mode="json")),
+    )
+    view.update_query = Mock()
     container = ui.column()
     try:
         with container:
-            menu = SettingsMenu(
-                settings, lambda value: saved.append(value.model_dump(mode="json"))
-            ).build()
+            view.build()
+        menu = view.settings_menu
 
-        assert menu.dark_mode.value is True
+        assert view.dark_mode.value is True
         assert menu.dark_mode_switch.value is True
 
         menu.dark_mode_switch.value = False
-        assert menu.dark_mode.value is False
+        assert view.dark_mode.value is False
         assert saved[-1]["misc_settings"]["dark_mode"] is False
 
-        menu.dark_mode.enable()
+        view.dark_mode.enable()
         assert menu.dark_mode_switch.value is True
         assert saved[-1]["misc_settings"]["dark_mode"] is True
         assert DashboardSettings.from_stored(saved[-1]).misc_settings.dark_mode is True
