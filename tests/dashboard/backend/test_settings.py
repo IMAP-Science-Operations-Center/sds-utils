@@ -25,6 +25,7 @@ def test_dashboard_settings_have_safe_defaults() -> None:
     }
     assert settings.projection == ProjectionSpec()
     assert settings.filtering == {}
+    assert settings.misc_settings.dark_mode is False
     assert settings.query == QuerySpec(
         start_time=datetime.datetime(2026, 10, 1),
         end_time=datetime.datetime(2100, 1, 1, 0, 0, 0),
@@ -110,6 +111,7 @@ def test_settings_repository_loads_defaults_and_round_trips_settings() -> None:
 
     settings = DashboardSettings(
         active_agg_preset=AggPreset.DATES_SUMMARY,
+        misc_settings={"dark_mode": True},
         agg_specs={
             AggPreset.DATES_SUMMARY: AggSpec(
                 preset=AggPreset.DATES_SUMMARY,
@@ -127,6 +129,21 @@ def test_settings_repository_loads_defaults_and_round_trips_settings() -> None:
     repository.save(profile.id, settings)
 
     assert repository.load(profile.id) == settings
+    assert repository.load(profile.id).model_dump(mode="json")["misc_settings"] == {
+        "dark_mode": True
+    }
+
+
+def test_invalid_misc_settings_preserve_other_preferences() -> None:
+    settings = DashboardSettings.from_stored(
+        {
+            "misc_settings": {"dark_mode": "invalid"},
+            "active_agg_preset": "dates_summary",
+        }
+    )
+
+    assert settings.misc_settings.dark_mode is False
+    assert settings.active_agg_preset is AggPreset.DATES_SUMMARY
 
 
 def test_invalid_stored_query_falls_back_without_discarding_other_fields() -> None:

@@ -33,11 +33,20 @@ def _default_query() -> QuerySpec:
     )
 
 
-class DashboardSettings(BaseModel):
-    """Query, projection, aggregation, and filters persisted for one user."""
+class MiscSettings(BaseModel):
+    """Miscellaneous interface preferences persisted for one user."""
 
     model_config = ConfigDict(extra="forbid")
 
+    dark_mode: bool = False
+
+
+class DashboardSettings(BaseModel):
+    """Appearance, query, projection, aggregation, and filters for one user."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    misc_settings: MiscSettings = Field(default_factory=MiscSettings)
     active_agg_preset: AggPreset = AggPreset.RAW
     agg_specs: dict[AggPreset, AggSpec] = Field(default_factory=_default_agg_specs)
     projection: ProjectionSpec = Field(default_factory=ProjectionSpec)

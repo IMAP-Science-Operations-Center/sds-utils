@@ -13,6 +13,7 @@ from .filtercontrols import FilterControls
 from .navigation import PaneNavigator
 from .projectioncontrols import ProjectionControls
 from .querycontrols import QueryControls
+from .settingsmenu import SettingsMenu
 from .status import StatusSummary
 from .tablerenderer import DashboardTableRenderer, TableRenderOptions
 from .uielem import UIElem
@@ -69,6 +70,9 @@ class FilteredTableView(FilteredTableViewBase):
                 z-index: 2;
                 background: white;
             }
+            .body--dark .dashboard-sticky-table thead tr th {
+                background: #1d1d1d;
+            }
             """
         )
         self.filters = FilterControls(
@@ -96,6 +100,9 @@ class FilteredTableView(FilteredTableViewBase):
                 icon="download",
                 on_click=self.export_csv,
             ).props("flat no-caps").classes("self-center")
+            self.settings_menu = SettingsMenu(
+                self.settings, self._sync_settings
+            ).build()
         self.status_summary = StatusSummary(self.filters.menus["status"]).build()
         self.standalone_filters_container = ui.row().classes(
             "w-full items-center gap-3 flex-wrap"
@@ -170,12 +177,9 @@ class FilteredTableView(FilteredTableViewBase):
             )
 
         self.status_summary.update(data_df)
-        self._sync_settings(
-            DashboardSettings(
-                active_agg_preset=self.navigator.agg_spec.preset,
-                agg_specs=self.navigator.agg_specs,
-                projection=self.projection.spec,
-                filtering=persistent_filters,
-                query=self.query_controls.query,
-            )
-        )
+        self.settings.active_agg_preset = self.navigator.agg_spec.preset
+        self.settings.agg_specs = self.navigator.agg_specs
+        self.settings.projection = self.projection.spec
+        self.settings.filtering = persistent_filters
+        self.settings.query = self.query_controls.query
+        self._sync_settings(self.settings)

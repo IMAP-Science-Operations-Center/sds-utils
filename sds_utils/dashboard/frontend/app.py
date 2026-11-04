@@ -31,6 +31,10 @@ class TableApp(UIElem):
         table = FilteredTable(data_source)
         settings_repository = SettingsRepository(engine)
         settings = settings_repository.load(self.user_id)
+        dark_mode = os.getenv("DASHBOARD_APP_DARK_MODE")
+        if dark_mode is not None:
+            settings.misc_settings.dark_mode = dark_mode.strip() == "1"
+        settings_repository.save(self.user_id, settings)
         self.table_view = FilteredTableView(
             table,
             dagster_url=os.environ["DAGSTER_BASE_URL"],

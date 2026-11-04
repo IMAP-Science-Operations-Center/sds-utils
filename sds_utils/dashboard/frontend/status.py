@@ -39,17 +39,17 @@ STATUS_HELP = {
     ),
 }
 
-STATUS_CARD_CLASSES = {
-    "materialized": "border-green-400 bg-green-50 text-green-900",
-    "materializing": "border-violet-400 bg-violet-50 text-violet-900",
-    "canceling": "border-cyan-400 bg-cyan-50 text-cyan-900",
-    "canceled": "border-gray-400 bg-gray-100 text-gray-900",
-    "failed": "border-red-400 bg-red-50 text-red-900",
-    "skipped": "border-yellow-400 bg-yellow-50 text-yellow-900",
-    "missing": "border-fuchsia-400 bg-fuchsia-50 text-fuchsia-900",
-    "not-run": "border-slate-400 bg-slate-100 text-slate-900",
-    "unknown": "border-orange-400 bg-orange-50 text-orange-900",
-    "not-found": "border-cyan-400 bg-cyan-50 text-cyan-900",
+STATUS_CARD_COLORS = {
+    "materialized": "#22c55e",
+    "materializing": "#8b5cf6",
+    "canceling": "#06b6d4",
+    "canceled": "#6b7280",
+    "failed": "#ef4444",
+    "skipped": "#eab308",
+    "missing": "#d946ef",
+    "not-run": "#64748b",
+    "unknown": "#f97316",
+    "not-found": "#06b6d4",
 }
 
 STATUS_BADGE_COLORS = {
@@ -69,16 +69,16 @@ SNAPSHOT_STATUS_CLASSES = {
     "materialized": "text-green-700",
     "materializing": "text-violet-700",
     "canceling": "text-cyan-600",
-    "canceled": "text-gray-600",
+    "canceled": "text-current opacity-60",
     "failed": "text-red-600",
     "skipped": "text-yellow-600",
     "missing": "text-fuchsia-600",
-    "not-run": "text-black",
+    "not-run": "text-current",
     "unknown": "text-orange-700",
     "not-found": "text-cyan-700",
 }
-SNAPSHOT_TOTAL_CLASS = "text-gray-500"
-SNAPSHOT_ZERO_CLASS = "text-gray-300"
+SNAPSHOT_TOTAL_CLASS = "text-current opacity-70"
+SNAPSHOT_ZERO_CLASS = "text-current opacity-30"
 
 
 def status_count_columns(data_df: pd.DataFrame) -> list[str]:
@@ -145,7 +145,7 @@ class StatusFilterCard(UIElem):
         "min-w-36 px-4 py-3 shadow-none border-2 cursor-pointer "
         "select-none transition-all duration-150"
     )
-    INACTIVE_CLASSES = "border-slate-200 bg-white text-slate-400 opacity-50"
+    INACTIVE_CLASSES = "dashboard-status-inactive opacity-50"
 
     def __init__(
         self,
@@ -161,6 +161,7 @@ class StatusFilterCard(UIElem):
     def render(self) -> None:
         """Render the clickable card and its count."""
         self.card = ui.card().classes(replace=self._classes())
+        self.card.style(f"--status-color: {STATUS_CARD_COLORS[self.status]}")
         self.card.props("role=button tabindex=0")
         self.card.on("click", self._toggle)
         with self.card:
@@ -186,10 +187,8 @@ class StatusFilterCard(UIElem):
         self.on_toggle(self.status, self.active)
 
     def _classes(self) -> str:
-        state_classes = (
-            STATUS_CARD_CLASSES[self.status] if self.active else self.INACTIVE_CLASSES
-        )
-        return f"{self.BASE_CLASSES} {state_classes}"
+        state_classes = "" if self.active else self.INACTIVE_CLASSES
+        return f"dashboard-status-card {self.BASE_CLASSES} {state_classes}"
 
 
 class StatusSummary(UIElem):
@@ -205,7 +204,41 @@ class StatusSummary(UIElem):
 
     def render(self) -> None:
         """Render cards in the canonical status order."""
-        self.container = ui.row().classes("w-full gap-3 flex-wrap")
+        ui.add_css(
+            """
+            .dashboard-status-summary {
+                --status-surface: white;
+                --status-foreground: #111827;
+            }
+            .body--dark .dashboard-status-summary {
+                --status-surface: var(--q-dark);
+                --status-foreground: white;
+            }
+            .dashboard-status-card {
+                background: color-mix(
+                    in srgb, var(--status-color) 12%, var(--status-surface)
+                );
+                border-color: color-mix(
+                    in srgb, var(--status-color) 65%, var(--status-surface)
+                );
+                color: color-mix(
+                    in srgb, var(--status-color) 35%, var(--status-foreground)
+                );
+            }
+            .dashboard-status-card.dashboard-status-inactive {
+                background: var(--status-surface);
+                border-color: color-mix(
+                    in srgb, var(--status-foreground) 20%, var(--status-surface)
+                );
+                color: color-mix(
+                    in srgb, var(--status-foreground) 60%, var(--status-surface)
+                );
+            }
+            """
+        )
+        self.container = ui.row().classes(
+            "dashboard-status-summary w-full gap-3 flex-wrap"
+        )
         self._render_cards()
 
     def _render_cards(self) -> None:

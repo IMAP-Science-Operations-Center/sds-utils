@@ -17,6 +17,9 @@ Run: `poetry run python -m sds_utils.scrubber`
   * `DAGSTER_API_KEY=<API-KEY>`
   * `DASHBOARD_APP_USERNAME=<username-of-your-choice>`
   * `DASHBOARD_APP_DB_URL=<AWS-db-url>`
+  * If desired, set `DASHBOARD_APP_DARK_MODE=1` to enable dark mode
+    * It can alternatively be set in the dashboard's settings GUI
+    * Either option is persisted across sessions
 
 ### Run the dashboard
 
