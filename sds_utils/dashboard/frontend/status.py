@@ -115,16 +115,23 @@ def format_status_counts(series: pd.Series) -> pd.Series:
     def format_value(value: object) -> list[dict[str, str]] | None:
         if not isinstance(value, StatusCounts):
             return None
+        total = sum(value)
         parts = [
             {
-                "text": f"{sum(value):0{widths[0]}d}",
-                "class": SNAPSHOT_TOTAL_CLASS,
+                "text": f"{total:0{widths[0]}d}",
+                "class": (
+                    f"{SNAPSHOT_TOTAL_CLASS} font-bold"
+                    if total
+                    else SNAPSHOT_TOTAL_CLASS
+                ),
             }
         ]
         parts.extend(
             {
                 "text": f"{count:0{width}d}",
-                "class": status_class if count else SNAPSHOT_ZERO_CLASS,
+                "class": (
+                    f"{status_class} font-bold" if count else SNAPSHOT_ZERO_CLASS
+                ),
             }
             for count, width, status_class in zip(
                 value,
