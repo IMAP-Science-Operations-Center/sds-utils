@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import pandas as pd
 from nicegui import ui
 
-from ..backend.aggbase import DATES_SUMMARY_EXTRA_COLUMNS, AggPreset, AggSpec
+from ..backend.aggbase import SUMMARY_EXTRA_COLUMNS, SUMMARY_PRESETS, AggPreset, AggSpec
 from .filtercontrols import FilterControls, GroupingControls
 from .status import (
     SNAPSHOT_TOTAL_CLASS,
@@ -65,16 +65,21 @@ class DashboardTableRenderer:
         for column in ("start_date", "end_date"):
             if column in display_df.columns:
                 display_df[column] = display_df[column].dt.strftime("%Y-%m-%d")
-        if agg_spec.preset is AggPreset.DATES_SUMMARY:
-            for column in DATES_SUMMARY_EXTRA_COLUMNS:
+        if agg_spec.preset in SUMMARY_PRESETS:
+            for column in SUMMARY_EXTRA_COLUMNS:
                 if column not in display_df:
                     display_df[column] = None
-            display_df["_drilldown"] = None
+            if agg_spec.preset == AggPreset.DATES_SUMMARY:
+                display_df["_drilldown"] = None
+                drilldown_cols = ["_drilldown"]
+                date_cols = ["start_date", "end_date"]
+            else:
+                drilldown_cols = []
+                date_cols = []
             fixed = [
-                "_drilldown",
-                *DATES_SUMMARY_EXTRA_COLUMNS,
-                "start_date",
-                "end_date",
+                *drilldown_cols,
+                *SUMMARY_EXTRA_COLUMNS,
+                *date_cols,
                 "status_counts",
             ]
             ordered = [column for column in fixed if column in display_df]
@@ -112,9 +117,9 @@ class DashboardTableRenderer:
         if options.drilldown_filter is not None:
             self._render_drill_down_headers(status_columns, options.on_drill_down)
         grouping = None
-        if options.agg_spec.preset is AggPreset.DATES_SUMMARY:
+        if options.agg_spec.preset in SUMMARY_PRESETS:
             grouping = GroupingControls(
-                columns=set(DATES_SUMMARY_EXTRA_COLUMNS),
+                columns=set(SUMMARY_EXTRA_COLUMNS),
                 enabled=set(options.agg_spec.extra_columns),
                 on_toggle=options.on_toggle_grouping,
             )

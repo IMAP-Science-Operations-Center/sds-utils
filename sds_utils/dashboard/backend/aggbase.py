@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from .status import StatusCounts
 
-DATES_SUMMARY_EXTRA_COLUMNS = (
+SUMMARY_EXTRA_COLUMNS = (
     "instrument",
     "data_level",
     "descriptor",
@@ -19,10 +19,17 @@ class AggPreset(StrEnum):
     """Supported raw and aggregated table layouts."""
 
     RAW = auto()
+    SUMMARY = auto()
     DATES_SUMMARY = auto()
     DATA_LEVELS_SNAPSHOT = auto()
     INSTRUMENTS_SNAPSHOT = auto()
     JOBS_SUMMARY = auto()
+
+
+SUMMARY_PRESETS = [
+    AggPreset.SUMMARY,
+    AggPreset.DATES_SUMMARY,
+]
 
 
 class AggSpec(BaseModel):
@@ -35,12 +42,15 @@ class AggSpec(BaseModel):
 class Aggregator:
     """Apply dashboard aggregation specifications to dataframes."""
 
-    def apply(self, data_df: pd.DataFrame, agg_spec: AggSpec) -> pd.DataFrame:
+    def apply(self, data_df: pd.DataFrame, agg_spec: AggSpec) -> pd.DataFrame:  # noqa: PLR0912
         """Transform dashboard rows according to an aggregation specification."""
         main_cols = ["start_date", "end_date"]
         match agg_spec.preset:
             case AggPreset.RAW:
                 return data_df
+            case AggPreset.SUMMARY:
+                horiz_col = None
+                main_cols = []
             case AggPreset.DATES_SUMMARY:
                 horiz_col = None
             case AggPreset.DATA_LEVELS_SNAPSHOT:
@@ -62,11 +72,16 @@ class Aggregator:
             kwargs = {k.replace("-", "_"): v for k, v in kwargs.items()}
             return StatusCounts(**kwargs)
 
-        grouped_df = pd.DataFrame(
-            data_df.groupby(cols_to_keep, dropna=False)
-            .status.apply(_make_status_counts)
-            .rename("status_counts")
-        ).reset_index()
+        if cols_to_keep:
+            grouped_df = pd.DataFrame(
+                data_df.groupby(cols_to_keep, dropna=False)
+                .status.apply(_make_status_counts)
+                .rename("status_counts")
+            ).reset_index()
+        else:
+            grouped_df = pd.DataFrame(
+                [{"status_counts": _make_status_counts(data_df.status)}]
+            )
 
         if agg_spec.preset == AggPreset.JOBS_SUMMARY:
             grouped_df2 = pd.DataFrame(

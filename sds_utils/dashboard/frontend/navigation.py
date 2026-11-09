@@ -7,7 +7,7 @@ from typing import Any
 from nicegui import ui
 from nicegui.events import ValueChangeEventArguments
 
-from ..backend.aggbase import DATES_SUMMARY_EXTRA_COLUMNS, AggPreset, AggSpec
+from ..backend.aggbase import SUMMARY_EXTRA_COLUMNS, SUMMARY_PRESETS, AggPreset, AggSpec
 from ..backend.filtersbase import FilterArguments
 from .elems import Select
 from .uielem import UIElem
@@ -93,6 +93,7 @@ class PaneNavigator(UIElem):
                 help=(
                     "Select the current table view.\n"
                     '- "Raw": Show all queried runs\n'
+                    '- "Summary": Aggregate runs by several optional fields\n'
                     '- "Dates summary": Aggregate runs by start date '
                     "(and other optional fields)\n"
                     '- "Data levels snapshot": Aggregate runs by data level '
@@ -177,10 +178,10 @@ class PaneNavigator(UIElem):
         self._state_changed()
 
     def toggle_extra_column(self, column: str) -> None:
-        """Toggle an optional dates-summary grouping column."""
+        """Toggle an optional summary grouping column."""
         if (
-            self.agg_spec.preset is not AggPreset.DATES_SUMMARY
-            or column not in DATES_SUMMARY_EXTRA_COLUMNS
+            self.agg_spec.preset not in SUMMARY_PRESETS
+            or column not in SUMMARY_EXTRA_COLUMNS
         ):
             return
         enabled = set(self.agg_spec.extra_columns)
@@ -188,9 +189,7 @@ class PaneNavigator(UIElem):
             enabled.remove(column)
         else:
             enabled.add(column)
-        extra_columns = [
-            name for name in DATES_SUMMARY_EXTRA_COLUMNS if name in enabled
-        ]
+        extra_columns = [name for name in SUMMARY_EXTRA_COLUMNS if name in enabled]
         self.agg_spec = self.agg_spec.model_copy(
             update={"extra_columns": extra_columns}
         )
