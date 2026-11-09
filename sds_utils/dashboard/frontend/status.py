@@ -145,13 +145,48 @@ def format_status_counts(series: pd.Series) -> pd.Series:
     return series.map(format_value)
 
 
-class StatusFilterCard(UIElem):
+class StatusCountCard(UIElem):
+    """Base card with shared status-summary sizing and content layout."""
+
+    BASE_CLASSES = "min-w-36 px-4 py-3 shadow-none border-2 select-none"
+
+    def __init__(
+        self,
+        label: str,
+        color: str,
+        help_text: str | None,
+    ) -> None:
+        self.label = label
+        self.color = color
+        self.help_text = help_text
+
+    def render(self) -> None:
+        """Render the consistently sized card header and count."""
+        self.card = ui.card().classes(replace=self._classes())
+        self.card.style(f"--status-color: {self.color}")
+        self._configure_card()
+        with self.card:
+            with ui.row().classes("w-full items-center justify-between gap-2"):
+                ui.label(self.label).classes("text-xs uppercase tracking-wide")
+                if self.help_text:
+                    help_icon(self.help_text)
+            self.count_label = ui.label("0").classes("text-2xl font-semibold")
+
+    def _configure_card(self) -> None:
+        """Apply behavior specific to a card subtype."""
+
+    def _classes(self) -> str:
+        return f"dashboard-status-card {self.BASE_CLASSES}"
+
+    def set_count(self, shown: int) -> None:
+        """Update the displayed count."""
+        self.count_label.set_text(f"{shown:,}")
+
+
+class StatusFilterCard(StatusCountCard):
     """Clickable status count card matching the established dashboard style."""
 
-    BASE_CLASSES = (
-        "min-w-36 px-4 py-3 shadow-none border-2 cursor-pointer "
-        "select-none transition-all duration-150"
-    )
+    INTERACTIVE_CLASSES = "cursor-pointer transition-all duration-150"
     INACTIVE_CLASSES = "dashboard-status-inactive opacity-50"
 
     def __init__(
@@ -161,28 +196,22 @@ class StatusFilterCard(UIElem):
         *,
         active: bool = True,
     ) -> None:
+        super().__init__(
+            label=status,
+            color=STATUS_CARD_COLORS[status],
+            help_text=STATUS_HELP.get(status),
+        )
         self.status = status
         self.on_toggle = on_toggle
         self.active = active
 
-    def render(self) -> None:
-        """Render the clickable card and its count."""
-        self.card = ui.card().classes(replace=self._classes())
-        self.card.style(f"--status-color: {STATUS_CARD_COLORS[self.status]}")
+    def _configure_card(self) -> None:
         self.card.props("role=button tabindex=0")
         self.card.on("click", self._toggle)
-        with self.card:
-            with ui.row().classes("w-full items-center justify-between gap-2"):
-                ui.label(self.status).classes("text-xs uppercase tracking-wide")
-                help_text = STATUS_HELP.get(self.status)
-                if help_text:
-                    help_icon(help_text)
-            self.count_label = ui.label("0").classes("text-2xl font-semibold")
 
     def set_count(self, shown: int) -> None:
-        """Update the displayed count."""
-        shown_text = f"{shown:,}" if self.active else "-"
-        self.count_label.set_text(shown_text)
+        """Update the count, showing a dash when this status is unselected."""
+        self.count_label.set_text(f"{shown:,}" if self.active else "-")
 
     def set_active(self, active: bool) -> None:
         """Synchronize the card's active appearance without invoking callbacks."""
@@ -195,7 +224,18 @@ class StatusFilterCard(UIElem):
 
     def _classes(self) -> str:
         state_classes = "" if self.active else self.INACTIVE_CLASSES
-        return f"dashboard-status-card {self.BASE_CLASSES} {state_classes}"
+        return f"{super()._classes()} {self.INTERACTIVE_CLASSES} {state_classes}"
+
+
+class StatusTotalCard(StatusCountCard):
+    """Non-interactive card showing the total across selected statuses."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            label="(TOTAL)",
+            color=STATUS_CARD_COLORS["not-run"],
+            help_text="Total: The sum of all the other selected status counts.",
+        )
 
 
 class StatusSummary(UIElem):
@@ -251,6 +291,7 @@ class StatusSummary(UIElem):
     def _render_cards(self) -> None:
         self.cards = {}
         with self.container:
+            self.total_card = StatusTotalCard().build()
             for status in self.statuses:
                 self.cards[status] = StatusFilterCard(
                     status,
@@ -280,6 +321,9 @@ class StatusSummary(UIElem):
     ) -> None:
         """Update counts and active state from displayed table data."""
         counts = self._status_counts(shown_df)
+        self.total_card.set_count(
+            sum(counts.get(status, 0) for status in self.status_filter.selected)
+        )
 
         for status, card in self.cards.items():
             card.set_active(status in self.status_filter.selected)
